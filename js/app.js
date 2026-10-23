@@ -1931,6 +1931,8 @@ function parseLineBasedAuthorizations(raw, kind){
         }
 
         const afterStatus = tail.slice(statusIndex + 1);
+        const statusCell = tail[statusIndex];
+        const statusAndIcd = statusCell.match(/^(PARTIAL[_ ]?APPROVE|APPROVE(?:D)?|DENY|DENIED|PEND(?:ING)?|REJECT(?:ED)?)\s+(ICD(?:-?\d{1,2})?|[A-Z]\d{2}(?:\.\d+)?)$/i);
         const procedureIndex = afterStatus.findIndex(isProcedureCode);
         const businessLineIndex = afterStatus.findIndex(value => /^(?:medicare|medicaid|commercial|marketplace|dual(?: eligible)?)$/i.test(value));
         const actionIndex = afterStatus.findIndex(value => /^(?:no action|no action needed)$/i.test(value));
@@ -1942,8 +1944,10 @@ function parseLineBasedAuthorizations(raw, kind){
         record.serviceTo = following[secondDateIndex];
         record.authorizationType = authorizationType;
         record.typeOfCare = typeOfCare;
-        record.status = tail[statusIndex];
-        record.icd = afterStatus.slice(0, procedureIndex >= 0 ? procedureIndex : afterStatus.length)
+        record.status = statusAndIcd ? statusAndIcd[1] : statusCell;
+        record.icd = statusAndIcd
+            ? statusAndIcd[2]
+            : afterStatus.slice(0, procedureIndex >= 0 ? procedureIndex : afterStatus.length)
             .filter(value => /^ICD(?:-?\d{1,2})?$/i.test(value) || /^[A-Z]\d{2}(?:\.\d+)?$/i.test(value))
             .join(" ");
         record.procedureCode = procedureIndex >= 0 ? afterStatus[procedureIndex] : "";
@@ -2196,6 +2200,10 @@ function importRepeatedRecords(kind){
     }
     if(!records.length){
         input.focus();
+        const toast = document.getElementById("toast");
+        toast.textContent = "No authorization row was detected. Copy the row again and include its values in order.";
+        toast.style.opacity = "1";
+        setTimeout(()=>toast.style.opacity = "0", 2600);
         return;
     }
     const existing = getRepeatedRecords(kind);
@@ -2368,8 +2376,10 @@ function formatRepeatedRecordNotes(kind, heading){
         recordNumber += 1;
         return `${heading} ${recordNumber}:\n${lines.join("\n")}\n`;
     }).filter(Boolean).join("");
+    const businessLines = records.map(record => String(record.businessLine || "").trim()).filter(Boolean);
     const hasMedicareBusinessLine = kind === "medicalAuthorization"
-        && records.some(record => /\bmedicare\b/i.test(String(record.businessLine || "")));
+        && records.length > 0
+        && (!businessLines.length || businessLines.some(value => /\bmedicare\b/i.test(value)));
     const disclaimer = hasMedicareBusinessLine
         ? "Disclaimer: Medicare Line of business: Treatment for Medical, Physical, Sexual or Mental health emergencies do not require prior authorization.\n"
         : "";
@@ -2378,7 +2388,7 @@ function formatRepeatedRecordNotes(kind, heading){
 
 function buildReason(reason, interactionType, pronoun) {
 
-    const cleanReason = reason.trim();
+    const cleanReason = reason.trim().replace(/^Reason:\s*/i, "");
 
     if (!cleanReason) {
         return "";
@@ -2386,11 +2396,19 @@ function buildReason(reason, interactionType, pronoun) {
 
     const lowerReason = cleanReason.toLowerCase();
 
+    // Keep an existing Caller/Member template, while matching the selected role and pronoun.
+    const existingTemplate = cleanReason.match(/^(?:the\s+)?(?:caller|member)\s+is calling us because\s+(?:he|she|they)\s+would like to\s*(.*)$/i);
+    if (existingTemplate) {
+        const details = existingTemplate[1].trim().replace(/[.!?]+$/, "");
+        return `Reason: ${interactionType} is calling us because ${pronoun} would like to${details ? ` ${details}` : ""}.\n`;
+    }
+
     /*
-        If the agent already entered a complete sentence,
-        do not add another grammatical structure.
+        Preserve complete sentences that already identify who called.
+        A trailing period alone should not suppress the selected
+        Caller/Member sentence template.
     */
-    const alreadyComplete = /^(?:he|she|they|i|we|caller|member|the member|the caller)\b/i.test(cleanReason) || /[.!?]$/.test(cleanReason);
+    const alreadyComplete = /^(?:he|she|they|i|we|caller|member|the member|the caller)\b/i.test(cleanReason);
 
     if (alreadyComplete) {
         return "Reason: " + cleanReason.replace(/[.!?]+$/, "") + ".\n";
@@ -2455,6 +2473,11 @@ function buildReason(reason, interactionType, pronoun) {
 
         return `Reason: ${interactionType} is calling us because ${pronoun} would like to ${cleanReason.substring(3).replace(/[.!?]+$/, "")}.\n`;
 
+    }
+
+    // Preserve the automatic lead-in when the entered reason is already a full sentence.
+    if (/[.!?]$/.test(cleanReason)) {
+        return `Reason: ${interactionType} is calling us because ${pronoun} would like to discuss: ${cleanReason.replace(/[.!?]+$/, "")}.\n`;
     }
 
     /*

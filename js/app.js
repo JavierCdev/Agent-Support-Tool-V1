@@ -1690,6 +1690,91 @@ let preferenceCounter = 0;
 let providers = [];
 let providerCounter = 0;
 
+function normalizeClaimTableHeader(value){
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function claimTableFieldKey(value){
+    const aliases = {
+        "id": "claimNumber",
+        "claim id": "claimNumber",
+        "claim number": "claimNumber",
+        "service from": "serviceFrom",
+        "service date from": "serviceFrom",
+        "service to": "serviceTo",
+        "service date to": "serviceTo",
+        "provider name": "providerName",
+        "service provider": "providerName",
+        "service provider name": "providerName",
+        "status": "status",
+        "claim status": "status",
+        "amount billed": "amountBilled",
+        "billed amount": "amountBilled"
+    };
+    return aliases[normalizeClaimTableHeader(value)] || null;
+}
+
+function parseClaimsTable(raw){
+    if(!raw.includes("\t")) return [];
+    const rows = raw.split(/\r?\n/)
+        .filter(line => line.trim())
+        .map(line => line.split("\t").map(cell => cell.trim()));
+    if(!rows.length) return [];
+
+    const isHeader = cells => {
+        const keys = cells.map(claimTableFieldKey);
+        return keys.includes("claimNumber") && keys.includes("serviceFrom") && keys.includes("serviceTo");
+    };
+    const headerIndex = rows.findIndex(isHeader);
+    const fields = repeatedRecordConfigs.claims.fields;
+    const records = [];
+
+    if(headerIndex >= 0){
+        const header = rows[headerIndex].map(claimTableFieldKey);
+        rows.slice(headerIndex + 1).forEach(cells => {
+            if(isHeader(cells)) return;
+            const record = createBlankRecord("claims");
+            header.forEach((key, index) => {
+                if(key && fields.some(field => field.key === key)){
+                    record[key] = cells[index] || "";
+                }
+            });
+            if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
+        });
+        return records;
+    }
+
+    // Clipboard rows without headings follow the Claims table column order.
+    rows.forEach(sourceCells => {
+        const cells = [...sourceCells];
+        while(cells.length && (!cells[0] || /^[▸▶▷>]+$/.test(cells[0]))) cells.shift();
+        if(cells.length < 6) return;
+
+        const dateIndexes = [];
+        cells.forEach((cell, index) => {
+            if(/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(cell)) dateIndexes.push(index);
+        });
+        const claimIndex = cells.findIndex(cell => /^[A-Z0-9-]{8,}$/i.test(cell) && /\d/.test(cell));
+        const statusIndex = cells.findIndex(cell => /\b(?:deny|denied|pend(?:ing)?|approve|approved|reject(?:ed)?|paid|processed|in review)\b/i.test(cell));
+        const amountIndex = cells.findIndex(cell => /^\$?\s*\d[\d,]*(?:\.\d{2})?$/.test(cell));
+
+        const record = createBlankRecord("claims");
+        record.claimNumber = claimIndex >= 0 ? cells[claimIndex] : (cells[4] || "");
+        record.serviceFrom = dateIndexes.length ? cells[dateIndexes[0]] : (cells[1] || "");
+        record.serviceTo = dateIndexes.length > 1 ? cells[dateIndexes[1]] : (cells[2] || "");
+        record.providerName = claimIndex >= 0 ? (cells[claimIndex + 2] || "") : (cells[6] || "");
+        record.status = statusIndex >= 0 ? cells[statusIndex] : (cells[7] || "");
+        record.amountBilled = amountIndex >= 0 ? cells[amountIndex] : (cells[8] || "");
+        if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
+    });
+    return records;
+}
+
 function importRepeatedRecords(kind){
     const input = document.getElementById(`bulkPaste-${kind}`);
     const raw = input?.value.trim();
@@ -1703,7 +1788,7 @@ function importRepeatedRecords(kind){
         chunk.push(line);
     });
     if(chunk.length) chunks.push(chunk);
-    const records = [];
+    const records = kind === "claims" ? parseClaimsTable(raw) : [];
     const fields = repeatedRecordConfigs[kind]?.fields || [];
     const aliases = {
         "claim number": "claimNumber",
@@ -1715,16 +1800,18 @@ function importRepeatedRecords(kind){
         "status": "status",
         "amount billed": "amountBilled"
     };
-    chunks.forEach(linesInChunk=>{
-        const record = createBlankRecord(kind);
-        linesInChunk.forEach(line=>{
-            const match = line.match(/^\s*([^:]+):\s*(.*?)\s*$/);
-            if(!match) return;
-            const key = aliases[match[1].trim().toLowerCase()];
-            if(key && fields.some(field => field.key === key)) record[key] = match[2];
+    if(!records.length){
+        chunks.forEach(linesInChunk=>{
+            const record = createBlankRecord(kind);
+            linesInChunk.forEach(line=>{
+                const match = line.match(/^\s*([^:]+):\s*(.*?)\s*$/);
+                if(!match) return;
+                const key = aliases[match[1].trim().toLowerCase()];
+                if(key && fields.some(field => field.key === key)) record[key] = match[2];
+            });
+            if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
         });
-        if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
-    });
+    }
     if(!records.length){
         input.focus();
         return;
@@ -4240,8 +4327,8 @@ if(field.type === "multiClaims"){
         <button type="button" class="copy" onclick="addRepeatedRecord('claims')">
             + Add Claim
         </button>
-        <textarea id="bulkPaste-claims" class="detail-textarea small" placeholder="Paste one or more claims here (Claim number, Service From, Service To, Provider Name, Status, Amount Billed)..."></textarea>
-        <button type="button" class="copy" onclick="importRepeatedRecords('claims')">Paste claim details</button>
+        <textarea id="bulkPaste-claims" class="detail-textarea small" onpaste="setTimeout(() => importRepeatedRecords('claims'), 0)" placeholder="Paste copied claim table rows here (include the column headings if possible)..."></textarea>
+        <button type="button" class="copy" onclick="importRepeatedRecords('claims')">Import pasted claims</button>
         <div id="claimsRecordsList"></div>
     `;
     renderRepeatedRecords("claims", "claimsRecordsList");

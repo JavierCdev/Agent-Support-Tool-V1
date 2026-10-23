@@ -1749,27 +1749,21 @@ function parseClaimsTable(raw){
         return records;
     }
 
-    // Clipboard rows without headings follow the Claims table column order.
+    // Rows copied without headings follow the Claims grid column order:
+    // Claim type, Service From, Service To, Adjustment indicator, ID,
+    // Member, Service provider, Status, Amount billed, LOB, Action.
     rows.forEach(sourceCells => {
         const cells = [...sourceCells];
         while(cells.length && (!cells[0] || /^[▸▶▷>]+$/.test(cells[0]))) cells.shift();
-        if(cells.length < 6) return;
-
-        const dateIndexes = [];
-        cells.forEach((cell, index) => {
-            if(/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(cell)) dateIndexes.push(index);
-        });
-        const claimIndex = cells.findIndex(cell => /^[A-Z0-9-]{8,}$/i.test(cell) && /\d/.test(cell));
-        const statusIndex = cells.findIndex(cell => /\b(?:deny|denied|pend(?:ing)?|approve|approved|reject(?:ed)?|paid|processed|in review)\b/i.test(cell));
-        const amountIndex = cells.findIndex(cell => /^\$?\s*\d[\d,]*(?:\.\d{2})?$/.test(cell));
+        if(cells.length < 9) return;
 
         const record = createBlankRecord("claims");
-        record.claimNumber = claimIndex >= 0 ? cells[claimIndex] : (cells[4] || "");
-        record.serviceFrom = dateIndexes.length ? cells[dateIndexes[0]] : (cells[1] || "");
-        record.serviceTo = dateIndexes.length > 1 ? cells[dateIndexes[1]] : (cells[2] || "");
-        record.providerName = claimIndex >= 0 ? (cells[claimIndex + 2] || "") : (cells[6] || "");
-        record.status = statusIndex >= 0 ? cells[statusIndex] : (cells[7] || "");
-        record.amountBilled = amountIndex >= 0 ? cells[amountIndex] : (cells[8] || "");
+        record.claimNumber = cells[4] || "";
+        record.serviceFrom = cells[1] || "";
+        record.serviceTo = cells[2] || "";
+        record.providerName = cells[6] || "";
+        record.status = cells[7] || "";
+        record.amountBilled = cells[8] || "";
         if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
     });
     return records;

@@ -146,6 +146,7 @@ Language Services intent was opened to assist the caller with:
             id:"language_schedule_date",
             label:"Appointment Date",
             type:"textarea",
+            inputType:"date",
             size:"xsmall",
             showWhen:"Schedule an Interpreter Appointment"
         }
@@ -443,6 +444,7 @@ Billing Inquiry & Payments intent was opened to assist the caller with:
             id:"billing_date",
             label:"Payment Date",
             type:"textarea",
+            inputType:"date",
             size:"xsmall"
         },
 
@@ -450,6 +452,8 @@ Billing Inquiry & Payments intent was opened to assist the caller with:
             id:"billing_amount",
             label:"Amount",
             type:"textarea",
+            inputType:"number",
+            formatAsCurrency:true,
             size:"xsmall"
         },
 
@@ -592,6 +596,7 @@ Notification of Death intent was opened to assist the caller.
             id:"date_of_death",
             label:"Date of Death",
             type:"textarea",
+            inputType:"date",
             size:"xsmall"
         },
 
@@ -710,6 +715,7 @@ Member Demographics intent was opened to assist the caller with the following up
             id:"member_address_effective",
             label:"Effective Date",
             type:"textarea",
+            inputType:"date",
             size:"small",
 
             dependsOn:"update_type",
@@ -734,6 +740,7 @@ Member Demographics intent was opened to assist the caller with the following up
             id:"authorized_contact_start",
             label:"Start Date",
             type:"textarea",
+            inputType:"date",
             size:"small",
 
             dependsOn:"update_type",
@@ -744,6 +751,7 @@ Member Demographics intent was opened to assist the caller with the following up
             id:"authorized_contact_end",
             label:"End Date",
             type:"textarea",
+            inputType:"date",
             size:"small",
 
             dependsOn:"update_type",
@@ -758,6 +766,7 @@ Member Demographics intent was opened to assist the caller with the following up
             id:"member_dob",
             label:"Date of Birth",
             type:"textarea",
+            inputType:"date",
             size:"small",
 
             dependsOn:"update_type",
@@ -800,6 +809,7 @@ Member Demographics intent was opened to assist the caller with the following up
             id:"member_phone",
             label:"Phone Number",
             type:"textarea",
+            inputType:"tel",
             size:"small",
 
             dependsOn:"update_type",
@@ -1081,6 +1091,7 @@ Update PCP intent was opened to assist the caller with:
             id:"pcp_phone",
             label:"Phone Number",
             type:"textarea",
+            inputType:"tel",
             size:"small"
         },
 
@@ -1095,6 +1106,7 @@ Update PCP intent was opened to assist the caller with:
             id:"pcp_npi",
             label:"NPI",
             type:"textarea",
+            inputType:"digits",
             size:"small"
         },
 
@@ -1124,6 +1136,7 @@ Update PCP intent was opened to assist the caller with:
             id:"pcp_effective_date",
             label:"Effective Date",
             type:"textarea",
+            inputType:"date",
             size:"small"
         },
 
@@ -1241,6 +1254,7 @@ B&E intent was opened to get the plan information and assist the caller.
             id:"be_active_effective_date",
             label:"Effective Date",
             type:"textarea",
+            inputType:"date",
             size:"xsmall",
             excludeFromNote:true
         },
@@ -1249,6 +1263,7 @@ B&E intent was opened to get the plan information and assist the caller.
             id:"be_active_end_date",
             label:"End Date",
             type:"textarea",
+            inputType:"date",
             size:"xsmall",
             excludeFromNote:true
         },
@@ -1744,13 +1759,77 @@ function renderResolutionOutcome(action, container){
 
     container.insertAdjacentHTML("beforeend", `
         <label class="detail-label" for="${key}">Call outcome (optional)</label>
-        <select id="${key}" class="text-input" onchange="actionValues['${key}']=this.value; generate();">
-            <option value="" ${selected ? "" : "selected"}>Select what happened...</option>
-            ${options.map(option => `<option value="${escapeHTML(option)}" ${selected === option ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
-        </select>
+        <div class="outcome-choice" data-outcome-control="${key}">
+            <button id="${key}" type="button" class="text-input outcome-trigger" data-outcome-toggle="${key}"
+                aria-haspopup="listbox" aria-expanded="false" aria-controls="${key}_options">
+                <span>${escapeHTML(selected || "Select what happened...")}</span><span class="outcome-chevron" aria-hidden="true"></span>
+            </button>
+            <div id="${key}_options" class="outcome-menu" role="listbox" hidden>
+                ${options.map(option => `
+                    <button type="button" class="outcome-option" role="option"
+                        aria-selected="${selected === option}" data-outcome-key="${key}"
+                        data-outcome-value="${escapeHTML(option)}">${escapeHTML(option)}</button>
+                `).join("")}
+            </div>
+            <select id="${key}_state" class="outcome-state" aria-hidden="true" tabindex="-1" hidden>
+                <option value="">Select what happened...</option>
+                ${options.map(option => `<option value="${escapeHTML(option)}" ${selected === option ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+            </select>
+        </div>
         <small class="resolution-outcome-help">Choose only the result that happened. It will appear in Resolution.</small>
     `);
 }
+
+function closeOutcomeMenus(exceptKey=""){
+    document.querySelectorAll(".outcome-choice").forEach(control=>{
+        const key = control.dataset.outcomeControl;
+        if(key === exceptKey) return;
+        const button = control.querySelector("[data-outcome-toggle]");
+        const menu = control.querySelector(".outcome-menu");
+        if(button) button.setAttribute("aria-expanded", "false");
+        if(menu) menu.hidden = true;
+    });
+}
+
+document.addEventListener("click", event=>{
+    const toggle = event.target.closest("[data-outcome-toggle]");
+    if(toggle){
+        event.preventDefault();
+        const control = toggle.closest(".outcome-choice");
+        const key = toggle.dataset.outcomeToggle;
+        const menu = control?.querySelector(".outcome-menu");
+        const shouldOpen = menu?.hidden;
+        closeOutcomeMenus(key);
+        if(menu){
+            menu.hidden = !shouldOpen;
+            toggle.setAttribute("aria-expanded", String(shouldOpen));
+        }
+        return;
+    }
+
+    const option = event.target.closest("[data-outcome-key]");
+    if(option){
+        const key = option.dataset.outcomeKey;
+        const value = option.dataset.outcomeValue || "";
+        actionValues[key] = value;
+        const stateSelect = document.getElementById(`${key}_state`);
+        if(stateSelect) stateSelect.value = value;
+        const toggleButton = document.querySelector(`[data-outcome-toggle="${key}"]`);
+        if(toggleButton){
+            toggleButton.querySelector("span").textContent = value;
+            toggleButton.setAttribute("aria-expanded", "false");
+        }
+        closeOutcomeMenus();
+        generate();
+        return;
+    }
+
+    if(!event.target.closest(".outcome-choice")) closeOutcomeMenus();
+});
+
+document.addEventListener("keydown", event=>{
+    if(event.key === "Escape") closeOutcomeMenus();
+});
 
 function normalizeClaimTableHeader(value){
     return String(value || "")
@@ -2206,6 +2285,10 @@ function importRepeatedRecords(kind){
         setTimeout(()=>toast.style.opacity = "0", 2600);
         return;
     }
+    records.forEach(record=>fields.forEach(field=>{
+        if(field.inputType === "date") record[field.key] = normalizeDateInputValue(record[field.key]);
+        if(field.inputType === "number") record[field.key] = normalizeNumberInputValue(record[field.key]);
+    }));
     const existing = getRepeatedRecords(kind);
     existing.push(...records);
     input.value = "";
@@ -2222,11 +2305,11 @@ const repeatedRecordConfigs = {
         title: "Claim",
         fields: [
             { key: "claimNumber", label: "Claim number" },
-            { key: "serviceFrom", label: "Service From", placeholder: "MM/DD/YYYY" },
-            { key: "serviceTo", label: "Service To", placeholder: "MM/DD/YYYY" },
+            { key: "serviceFrom", label: "Service From", placeholder: "MM/DD/YYYY", inputType: "date" },
+            { key: "serviceTo", label: "Service To", placeholder: "MM/DD/YYYY", inputType: "date" },
             { key: "providerName", label: "Provider Name" },
             { key: "status", label: "Status", placeholder: "DENY / APPROVED / PENDING" },
-            { key: "amountBilled", label: "Amount Billed", placeholder: "$0.00" }
+            { key: "amountBilled", label: "Amount Billed", placeholder: "$0.00", inputType: "number", formatAsCurrency: true }
         ]
     },
     medicalAuthorization: {
@@ -2234,8 +2317,8 @@ const repeatedRecordConfigs = {
         fields: [
             { key: "authorizationNumber", label: "Auth number" },
             { key: "providerName", label: "Provider/Facility name" },
-            { key: "serviceFrom", label: "Start date", placeholder: "MM/DD/YYYY" },
-            { key: "serviceTo", label: "End date", placeholder: "MM/DD/YYYY" },
+            { key: "serviceFrom", label: "Start date", placeholder: "MM/DD/YYYY", inputType: "date" },
+            { key: "serviceTo", label: "End date", placeholder: "MM/DD/YYYY", inputType: "date" },
             { key: "authorizationType", label: "Auth type" },
             { key: "typeOfCare", label: "Type of care" },
             { key: "status", label: "Status", placeholder: "APPROVE / PARTIAL_APPROVE / DENY / PENDING" },
@@ -2250,8 +2333,8 @@ const repeatedRecordConfigs = {
         fields: [
             { key: "authorizationNumber", label: "Auth number" },
             { key: "providerName", label: "Provider/Facility name" },
-            { key: "serviceFrom", label: "Start date", placeholder: "MM/DD/YYYY" },
-            { key: "serviceTo", label: "End date", placeholder: "MM/DD/YYYY" },
+            { key: "serviceFrom", label: "Start date", placeholder: "MM/DD/YYYY", inputType: "date" },
+            { key: "serviceTo", label: "End date", placeholder: "MM/DD/YYYY", inputType: "date" },
             { key: "authorizationType", label: "Auth type" },
             { key: "typeOfCare", label: "Type of care" },
             { key: "status", label: "Status", placeholder: "APPROVE / PARTIAL_APPROVE / DENY / PENDING" },
@@ -2303,6 +2386,259 @@ function escapeHTML(value){
     })[character]);
 }
 
+function normalizeDateInputValue(value){
+    const raw = String(value ?? "").trim();
+    if(!raw) return "";
+
+    let year, month, day;
+    const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    const us = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+
+    if(iso){
+        [, year, month, day] = iso;
+    }else if(us){
+        [, month, day, year] = us;
+        if(year.length === 2) year = Number(year) < 50 ? `20${year}` : `19${year}`;
+    }else{
+        return "";
+    }
+
+    year = Number(year);
+    month = Number(month);
+    day = Number(day);
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if(check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return "";
+    return `${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+}
+
+function formatDateForNote(value){
+    const iso = normalizeDateInputValue(value);
+    if(!iso) return String(value ?? "").trim();
+    const [year, month, day] = iso.split("-");
+    return `${month}/${day}/${year}`;
+}
+
+function normalizeNumberInputValue(value){
+    const cleaned = String(value ?? "").trim().replace(/[\s$,]/g, "");
+    if(!cleaned) return "";
+    return /^\d+(?:\.\d*)?$/.test(cleaned) ? cleaned : "";
+}
+
+function formatRepeatedFieldValue(field, value){
+    if(field.inputType === "date") return formatDateForNote(value);
+    const number = normalizeNumberInputValue(value);
+    if(field.inputType === "number" && field.formatAsCurrency && number) return `$${Number(number).toFixed(2)}`;
+    return String(value ?? "").trim();
+}
+
+function formatConfiguredFieldValue(field, value){
+    if(field?.inputType === "date") return formatDateForNote(value);
+    const number = normalizeNumberInputValue(value);
+    if(field?.inputType === "number" && field.formatAsCurrency && number) return `$${Number(number).toFixed(2)}`;
+    return String(value ?? "").trim();
+}
+
+function sanitizeTypedFieldValue(inputType, value){
+    const raw = String(value ?? "");
+    if(inputType === "date") return normalizeDateInputValue(raw);
+    if(inputType === "number") return normalizeNumberInputValue(raw);
+    if(inputType === "digits") return raw.replace(/\D/g, "").slice(0, 10);
+    if(inputType === "tel") return raw.replace(/[^\d+()\s-]/g, "").slice(0, 25);
+    return raw;
+}
+
+function updateActionInputValue(fieldId, inputType, element){
+    const value = sanitizeTypedFieldValue(inputType, element.value);
+    const displayValue = inputType === "date" ? formatDateForNote(value) : value;
+    if(element.value !== displayValue) element.value = displayValue;
+    actionValues[fieldId] = value;
+    generate();
+}
+
+function updateDemographicInputValue(blockId, fieldId, inputType, element){
+    const value = sanitizeTypedFieldValue(inputType, element.value);
+    const displayValue = inputType === "date" ? formatDateForNote(value) : value;
+    if(element.value !== displayValue) element.value = displayValue;
+    const block = memberDemographics.find(item => item.id === blockId);
+    if(block) block.values[fieldId] = value;
+    generate();
+}
+
+function updatePreferenceInputValue(blockId, fieldId, inputType, element){
+    const value = sanitizeTypedFieldValue(inputType, element.value);
+    const displayValue = inputType === "date" ? formatDateForNote(value) : value;
+    if(element.value !== displayValue) element.value = displayValue;
+    const block = memberPreferences.find(item => item.id === blockId);
+    if(block) block.values[fieldId] = value;
+    generate();
+}
+
+function updateProviderInputValue(providerId, fieldId, inputType, element){
+    const value = sanitizeTypedFieldValue(inputType, element.value);
+    const displayValue = inputType === "date" ? formatDateForNote(value) : value;
+    if(element.value !== displayValue) element.value = displayValue;
+    const provider = providers.find(item => item.id === providerId);
+    if(provider) provider.values[fieldId] = value;
+    generate();
+}
+
+const datePickerState = { target: null, month: null, element: null };
+
+function localDateISO(date){
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+}
+
+function ensureDatePicker(){
+    if(datePickerState.element) return datePickerState.element;
+    const picker = document.createElement("div");
+    picker.id = "appDatePicker";
+    picker.className = "app-date-picker";
+    picker.setAttribute("role", "dialog");
+    picker.setAttribute("aria-label", "Choose a date");
+    picker.hidden = true;
+    picker.innerHTML = `
+        <div class="date-picker-header">
+            <button type="button" class="date-nav" data-date-month="-1" aria-label="Previous month">‹</button>
+            <div class="date-picker-month"></div>
+            <button type="button" class="date-nav" data-date-month="1" aria-label="Next month">›</button>
+        </div>
+        <div class="date-picker-weekdays" aria-hidden="true">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div class="date-picker-days"></div>
+        <div class="date-picker-footer">
+            <button type="button" data-date-action="clear">Clear</button>
+            <button type="button" data-date-action="today">Today</button>
+        </div>
+    `;
+    document.body.appendChild(picker);
+    datePickerState.element = picker;
+    return picker;
+}
+
+function positionDatePicker(input, picker){
+    const rect = input.getBoundingClientRect();
+    const width = Math.min(300, window.innerWidth - 20);
+    const height = picker.offsetHeight || 360;
+    const left = Math.max(10, Math.min(rect.left, window.innerWidth - width - 10));
+    const below = rect.bottom + 7;
+    const top = below + height <= window.innerHeight - 10
+        ? below
+        : Math.max(10, rect.top - height - 7);
+    picker.style.left = `${left}px`;
+    picker.style.top = `${top}px`;
+}
+
+function renderDatePicker(){
+    const picker = datePickerState.element;
+    if(!picker || !datePickerState.month) return;
+    const year = datePickerState.month.getFullYear();
+    const month = datePickerState.month.getMonth();
+    picker.querySelector(".date-picker-month").textContent = new Intl.DateTimeFormat("en-US", {
+        month:"long", year:"numeric"
+    }).format(datePickerState.month);
+
+    const selectedISO = normalizeDateInputValue(datePickerState.target?.value || "");
+    const todayISO = localDateISO(new Date());
+    const offset = new Date(year, month, 1).getDay();
+    const days = picker.querySelector(".date-picker-days");
+    days.innerHTML = Array.from({length:42}, (_,index)=>{
+        const date = new Date(year, month, index - offset + 1);
+        const iso = localDateISO(date);
+        const classes = ["date-day"];
+        if(date.getMonth() !== month) classes.push("is-outside");
+        if(iso === todayISO) classes.push("is-today");
+        if(iso === selectedISO) classes.push("is-selected");
+        return `<button type="button" class="${classes.join(" ")}" data-date-value="${iso}" aria-label="${formatDateForNote(iso)}">${date.getDate()}</button>`;
+    }).join("");
+}
+
+function openDatePicker(input){
+    const picker = ensureDatePicker();
+    const iso = normalizeDateInputValue(input.value);
+    const startingDate = iso ? new Date(`${iso}T12:00:00`) : new Date();
+    datePickerState.target = input;
+    datePickerState.month = new Date(startingDate.getFullYear(), startingDate.getMonth(), 1);
+    input.setAttribute("aria-expanded", "true");
+    picker.hidden = false;
+    renderDatePicker();
+    positionDatePicker(input, picker);
+}
+
+function closeDatePicker(){
+    if(datePickerState.target) datePickerState.target.setAttribute("aria-expanded", "false");
+    if(datePickerState.element) datePickerState.element.hidden = true;
+    datePickerState.target = null;
+    datePickerState.month = null;
+}
+
+function chooseDateInPicker(value){
+    const input = datePickerState.target;
+    if(!input) return;
+    input.value = formatDateForNote(value);
+    input.dispatchEvent(new Event("input", {bubbles:true}));
+    input.dispatchEvent(new Event("change", {bubbles:true}));
+    closeDatePicker();
+}
+
+document.addEventListener("click", event=>{
+    const dateInput = event.target.closest(".custom-date-input");
+    if(dateInput){
+        event.preventDefault();
+        if(datePickerState.target === dateInput && datePickerState.element && !datePickerState.element.hidden){
+            closeDatePicker();
+        }else{
+            closeDatePicker();
+            openDatePicker(dateInput);
+        }
+        return;
+    }
+
+    const monthButton = event.target.closest("[data-date-month]");
+    if(monthButton && event.target.closest("#appDatePicker")){
+        datePickerState.month.setMonth(datePickerState.month.getMonth() + Number(monthButton.dataset.dateMonth));
+        renderDatePicker();
+        positionDatePicker(datePickerState.target, datePickerState.element);
+        return;
+    }
+
+    const dayButton = event.target.closest("[data-date-value]");
+    if(dayButton && event.target.closest("#appDatePicker")){
+        chooseDateInPicker(dayButton.dataset.dateValue);
+        return;
+    }
+
+    const dateAction = event.target.closest("[data-date-action]");
+    if(dateAction && event.target.closest("#appDatePicker")){
+        if(dateAction.dataset.dateAction === "today") chooseDateInPicker(localDateISO(new Date()));
+        else chooseDateInPicker("");
+        return;
+    }
+
+    if(!event.target.closest("#appDatePicker")) closeDatePicker();
+});
+
+document.addEventListener("keydown", event=>{
+    if(event.target.matches?.(".custom-date-input") && (event.key === "Enter" || event.key === " ")){
+        event.preventDefault();
+        openDatePicker(event.target);
+        return;
+    }
+    if(event.key === "Escape") closeDatePicker();
+});
+
+window.addEventListener("resize", ()=>{
+    if(datePickerState.target && datePickerState.element && !datePickerState.element.hidden){
+        positionDatePicker(datePickerState.target, datePickerState.element);
+    }
+});
+
+window.addEventListener("scroll", ()=>{
+    if(datePickerState.target && datePickerState.element && !datePickerState.element.hidden){
+        positionDatePicker(datePickerState.target, datePickerState.element);
+    }
+}, true);
+
 function renderRepeatedRecords(kind, containerId){
     const container = document.getElementById(containerId);
     if(!container) return;
@@ -2318,10 +2654,23 @@ function renderRepeatedRecords(kind, containerId){
             </div>
             <div class="benefit-compact-grid">
                 ${config.fields.map(field=>{
-                    const current = escapeHTML(record[field.key]);
+                    const currentValue = field.inputType === "date"
+                        ? normalizeDateInputValue(record[field.key])
+                        : field.inputType === "number"
+                            ? normalizeNumberInputValue(record[field.key])
+                            : record[field.key];
+                    const current = escapeHTML(currentValue);
                     const placeholder = escapeHTML(field.placeholder || field.label);
                     if(field.type === "textarea"){
                         return `<textarea class="detail-textarea ${field.size || "medium"}" style="grid-column:1 / -1; margin-top:0" aria-label="${escapeHTML(field.label)}" placeholder="${placeholder}" oninput="updateRepeatedRecord('${kind}', ${index}, '${field.key}', this.value)">${current}</textarea>`;
+                    }
+                    if(field.inputType === "date" || field.inputType === "number"){
+                        const numberAttributes = field.inputType === "number" ? 'min="0" step="0.01" inputmode="decimal"' : "";
+                        const inputType = field.inputType === "date" ? "text" : "number";
+                        const inputClass = field.inputType === "date" ? "text-input custom-date-input" : "text-input";
+                        const inputAttributes = field.inputType === "date" ? 'readonly inputmode="none" aria-haspopup="dialog" aria-expanded="false"' : numberAttributes;
+                        const displayValue = field.inputType === "date" ? formatDateForNote(currentValue) : current;
+                        return `<input class="${inputClass}" style="min-width:0" type="${inputType}" ${inputAttributes} aria-label="${escapeHTML(field.label)}" placeholder="${placeholder}" value="${escapeHTML(displayValue)}" oninput="updateRepeatedRecord('${kind}', ${index}, '${field.key}', this.value)">`;
                     }
                     if(field.options){
                         return `<select class="text-input" style="min-width:0" aria-label="${escapeHTML(field.label)}" onchange="updateRepeatedRecord('${kind}', ${index}, '${field.key}', this.value)">
@@ -2359,7 +2708,10 @@ function removeRepeatedRecord(kind, index){
 
 function updateRepeatedRecord(kind, index, field, value){
     const record = getRepeatedRecords(kind)[index];
-    if(!record || !repeatedRecordConfigs[kind].fields.some(item=>item.key === field)) return;
+    const configField = repeatedRecordConfigs[kind]?.fields.find(item=>item.key === field);
+    if(!record || !configField) return;
+    if(configField.inputType === "date") value = normalizeDateInputValue(value);
+    if(configField.inputType === "number") value = normalizeNumberInputValue(value);
     record[field] = value;
     generate();
 }
@@ -2371,7 +2723,7 @@ function formatRepeatedRecordNotes(kind, heading){
     const formattedRecords = records.map(record=>{
         const lines = config.fields
             .filter(field => String(record[field.key] || "").trim() !== "")
-            .map(field => `${field.label}: ${String(record[field.key]).trim()}`);
+            .map(field => `${field.label}: ${formatRepeatedFieldValue(field, record[field.key])}`);
         if(!lines.length) return "";
         recordNumber += 1;
         return `${heading} ${recordNumber}:\n${lines.join("\n")}\n`;
@@ -2587,7 +2939,7 @@ function buildAutomaticResolutionSummary(){
             const details = [
                 actionValues.pcp_name && clean(actionValues.pcp_name),
                 actionValues.pcp_group && `medical group: ${clean(actionValues.pcp_group)}`,
-                actionValues.pcp_effective_date && `effective ${clean(actionValues.pcp_effective_date)}`,
+                actionValues.pcp_effective_date && `effective ${formatDateForNote(actionValues.pcp_effective_date)}`,
                 actionValues.pcp_accepting_new && `accepting new patients: ${clean(actionValues.pcp_accepting_new).toLowerCase()}`,
                 actionValues.pcp_retro_restriction && `retroactive date restriction: ${clean(actionValues.pcp_retro_restriction).toLowerCase()}`
             ].filter(Boolean);
@@ -2657,7 +3009,7 @@ function buildAutomaticResolutionSummary(){
 
         const values = (action.fields || []).flatMap(field => {
             if(multiTypes.has(field.type) || excludedLabels.test(field.label || "") || /tools used/i.test(field.label || "")) return [];
-            const value = clean(actionValues[field.id]);
+            const value = formatConfiguredFieldValue(field, actionValues[field.id]);
             if(!value) return [];
             if(/notes/i.test(field.label || "")){
                 const note = summarizeNote(value);
@@ -2879,10 +3231,10 @@ if(action.id==="memberdemographics"){
             (actionValues["be_active_member_name"] || "").trim();
 
         const effectiveDate =
-            (actionValues["be_active_effective_date"] || "").trim();
+            formatDateForNote(actionValues["be_active_effective_date"] || "");
 
         const endDate =
-            (actionValues["be_active_end_date"] || "").trim();
+            formatDateForNote(actionValues["be_active_end_date"] || "");
 
         const planName =
             (actionValues["be_active_plan_name"] || "").trim();
@@ -3012,7 +3364,7 @@ if(action.id==="memberdemographics"){
 
         if(field.type === "multiClaims" || field.type === "multiAuthorization" || field.type === "multiBenefits") return;
 
-        const value = actionValues[field.id] || "";
+        const value = formatConfiguredFieldValue(field, actionValues[field.id]);
 
         if(value !== ""){
 
@@ -3289,22 +3641,30 @@ function renderDemographicBlocks(){
 
             if(field.showWhen !== block.updateType) return;
 
-            card += `
-
-<label class="detail-label">
-    ${field.label}
-</label>
-
-<textarea
-    class="detail-textarea ${field.size || "small"}"
-    placeholder="${field.label}"
-    oninput="
-    memberDemographics.find(d=>d.id===${block.id})
-    .values['${field.id}']=this.value;
-    generate();
-">${block.values[field.id] || ""}</textarea>
-
-`;
+            if(["date","number","tel","digits"].includes(field.inputType)){
+                const htmlType = field.inputType === "digits" ? "text" : field.inputType;
+                const attrs = field.inputType === "number"
+                    ? 'min="0" step="0.01" inputmode="decimal"'
+                    : field.inputType === "tel"
+                        ? 'inputmode="tel"'
+                        : field.inputType === "digits"
+                            ? 'inputmode="numeric" maxlength="10"'
+                            : "";
+                const value = sanitizeTypedFieldValue(field.inputType, block.values[field.id]);
+                card += `
+                    <label class="detail-label" for="demographic_${block.id}_${field.id}">${field.label}</label>
+                    <input id="demographic_${block.id}_${field.id}" class="text-input${field.inputType === "date" ? " custom-date-input" : ""}" type="${field.inputType === "date" ? "text" : htmlType}" ${attrs} ${field.inputType === "date" ? 'readonly inputmode="none" aria-haspopup="dialog" aria-expanded="false"' : ""}
+                        aria-label="${field.label}" placeholder="${field.label}" value="${escapeHTML(field.inputType === "date" ? formatDateForNote(value) : value)}"
+                        oninput="updateDemographicInputValue(${block.id},'${field.id}','${field.inputType}',this)">
+                `;
+            }else{
+                card += `
+                    <label class="detail-label">${field.label}</label>
+                    <textarea class="detail-textarea ${field.size || "small"}" placeholder="${field.label}"
+                        oninput="memberDemographics.find(d=>d.id===${block.id}).values['${field.id}']=this.value; generate();"
+                    >${escapeHTML(block.values[field.id] || "")}</textarea>
+                `;
+            }
 
         });
 
@@ -3569,13 +3929,14 @@ function renderProviderBlocks(){
         Phone Number
     </label>
 
-    <textarea
-        class="detail-textarea small"
-        oninput="
-            providers.find(p=>p.id===${provider.id}).values.phone=this.value;
-            generate();
-        "
-    >${provider.values.phone || ""}</textarea>
+    <input
+        class="text-input"
+        type="tel"
+        inputmode="tel"
+        aria-label="Phone Number"
+        placeholder="Phone Number"
+        value="${escapeHTML(provider.values.phone || "")}"
+        oninput="updateProviderInputValue(${provider.id},'phone','tel',this)">
 
     <label class="detail-label">
         Specialty
@@ -3593,13 +3954,15 @@ function renderProviderBlocks(){
         NPI
     </label>
 
-    <textarea
-        class="detail-textarea small"
-        oninput="
-            providers.find(p=>p.id===${provider.id}).values.npi=this.value;
-            generate();
-        "
-    >${provider.values.npi || ""}</textarea>
+    <input
+        class="text-input"
+        type="text"
+        inputmode="numeric"
+        maxlength="10"
+        aria-label="NPI"
+        placeholder="10-digit NPI"
+        value="${escapeHTML(provider.values.npi || "")}"
+        oninput="updateProviderInputValue(${provider.id},'npi','digits',this)">
 
 </div>
 
@@ -3621,20 +3984,29 @@ function renderPreferenceField(field, block){
 
     // TEXTAREA
     if(field.type==="textarea"){
-
+        if(["date","number","tel","digits"].includes(field.inputType)){
+            const htmlType = field.inputType === "digits" ? "text" : field.inputType;
+            const attrs = field.inputType === "number"
+                ? 'min="0" step="0.01" inputmode="decimal"'
+                : field.inputType === "tel"
+                    ? 'inputmode="tel"'
+                    : field.inputType === "digits"
+                        ? 'inputmode="numeric" maxlength="10"'
+                        : "";
+            const safeValue = sanitizeTypedFieldValue(field.inputType, value);
+            return `
+                <label class="detail-label" for="preference_${block.id}_${field.id}">${field.label}</label>
+                <input id="preference_${block.id}_${field.id}" class="text-input${field.inputType === "date" ? " custom-date-input" : ""}" type="${field.inputType === "date" ? "text" : htmlType}" ${attrs} ${field.inputType === "date" ? 'readonly inputmode="none" aria-haspopup="dialog" aria-expanded="false"' : ""}
+                    aria-label="${field.label}" placeholder="${field.label}" value="${escapeHTML(field.inputType === "date" ? formatDateForNote(safeValue) : safeValue)}"
+                    oninput="updatePreferenceInputValue(${block.id},'${field.id}','${field.inputType}',this)">
+            `;
+        }
         return `
-<label class="detail-label">
-    ${field.label}
-</label>
-
-<textarea
-    class="detail-textarea ${field.size || ""}"
-    placeholder="${field.label}"
-    oninput="
-memberPreferences.find(p=>p.id===${block.id}).values['${field.id}']=this.value;
-generate();
-">${value}</textarea>
-`;
+            <label class="detail-label">${field.label}</label>
+            <textarea class="detail-textarea ${field.size || ""}" placeholder="${field.label}"
+                oninput="memberPreferences.find(p=>p.id===${block.id}).values['${field.id}']=this.value; generate();"
+            >${escapeHTML(value)}</textarea>
+        `;
 
     }
 
@@ -3729,7 +4101,7 @@ function generateMemberDemographics(){
 
             if(field.showWhen!==block.updateType) return;
 
-            const value = block.values[field.id];
+            const value = formatConfiguredFieldValue(field, block.values[field.id]);
 
             if(value){
 
@@ -3783,7 +4155,7 @@ function generateMemberPreferences(){
 
             if(field.showWhen!==block.updateType) return;
 
-            const value = block.values[field.id];
+            const value = formatConfiguredFieldValue(field, block.values[field.id]);
 
             if(value){
 
@@ -4528,26 +4900,30 @@ detailContainer.innerHTML += `
 
                 <div class="benefit-active-plan-row">
 
-                    <textarea
+                    <input
                         id="be_active_effective_date"
-                        class="detail-textarea xsmall"
+                        class="text-input detail-textarea xsmall custom-date-input"
+                        type="text"
+                        aria-label="Effective Date"
                         placeholder="Effective Date"
+                        readonly inputmode="none" aria-haspopup="dialog" aria-expanded="false"
                         oninput="
-                            actionValues['be_active_effective_date']=this.value;
-                            generate();
+                            updateActionInputValue('be_active_effective_date','date',this);
                         "
-                    >${getValue("be_active_effective_date")}</textarea>
+                        value="${escapeHTML(formatDateForNote(getValue("be_active_effective_date")))}">
 
 
-                    <textarea
+                    <input
                         id="be_active_end_date"
-                        class="detail-textarea xsmall"
+                        class="text-input detail-textarea xsmall custom-date-input"
+                        type="text"
+                        aria-label="End Date"
                         placeholder="End Date"
+                        readonly inputmode="none" aria-haspopup="dialog" aria-expanded="false"
                         oninput="
-                            actionValues['be_active_end_date']=this.value;
-                            generate();
+                            updateActionInputValue('be_active_end_date','date',this);
                         "
-                    >${getValue("be_active_end_date")}</textarea>
+                        value="${escapeHTML(formatDateForNote(getValue("be_active_end_date")))}">
 
                 </div>
 
@@ -4594,7 +4970,19 @@ detailContainer.innerHTML += `
     BENEFIT INFORMATION
 */
 
-detailContainer.innerHTML += `
+ detailContainer.innerHTML += `
+
+    <div class="be-section-title benefits">Tools Used</div>
+    <textarea
+        id="be_tools"
+        class="detail-textarea small"
+        placeholder="Enter tools used..."
+        oninput="actionValues['be_tools']=this.value; generate();"
+    >${getValue("be_tools")}</textarea>
+
+`;
+
+ detailContainer.innerHTML += `
 
     <div class="be-section-title benefits">
         Benefit Information
@@ -4612,29 +5000,6 @@ detailContainer.innerHTML += `
         <button type="button" class="copy" onclick="importRepeatedRecords('benefits')">
             Import pasted benefits
         </button>
-    `;
-
-    /*
-        TOOLS USED
-    */
-
-    detailContainer.innerHTML += `
-
-        <textarea
-
-            id="be_tools"
-
-            class="detail-textarea small"
-
-            placeholder="Tools Used"
-
-            oninput="
-                actionValues['be_tools']=this.value;
-                generate();
-            "
-
-        >${getValue("be_tools")}</textarea>
-
     `;
 
     detailContainer.innerHTML += `
@@ -4658,7 +5023,7 @@ function renderActionDetails(){
     <div class="action-detail-card">
 
         <div
-            class="action-detail-title"
+            class="action-detail-title ${expandedAction === action.id ? "is-expanded" : ""}"
             onclick="toggleAccordion('${action.id}')"
             style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
 
@@ -4793,22 +5158,36 @@ if(
     return;
 }
             if(field.type==="textarea"){
-
-                detailContainer.innerHTML += `
-                    <label class="detail-label">
-                        ${field.label}
-                    </label>
-
-                    <textarea
-    id="${field.id}"
-    class="detail-textarea ${field.size || 'medium'}"
-    rows="${field.rows || 3}"
-    oninput="
-        actionValues['${field.id}']=this.value;
-        generate();
-    "
->${actionValues[field.id] || ""}</textarea>
-                `;
+                const typedInput = ["date","number","tel","digits"].includes(field.inputType);
+                if(typedInput){
+                    const htmlType = field.inputType === "digits" ? "text" : field.inputType;
+                    const attrs = field.inputType === "number"
+                        ? 'min="0" step="0.01" inputmode="decimal"'
+                        : field.inputType === "tel"
+                            ? 'inputmode="tel"'
+                            : field.inputType === "digits"
+                                ? 'inputmode="numeric" maxlength="10"'
+                                : "";
+                    const value = sanitizeTypedFieldValue(field.inputType, actionValues[field.id]);
+                    detailContainer.innerHTML += `
+                        <label class="detail-label" for="${field.id}">${field.label}</label>
+                    <input id="${field.id}" class="text-input${field.inputType === "date" ? " custom-date-input" : ""}" type="${field.inputType === "date" ? "text" : htmlType}" ${attrs} ${field.inputType === "date" ? 'readonly inputmode="none" aria-haspopup="dialog" aria-expanded="false"' : ""}
+                        aria-label="${field.label}" placeholder="${field.label}" value="${escapeHTML(field.inputType === "date" ? formatDateForNote(value) : value)}"
+                            oninput="updateActionInputValue('${field.id}','${field.inputType}',this)">
+                    `;
+                }else{
+                    detailContainer.innerHTML += `
+                        <label class="detail-label">
+                            ${field.label}
+                        </label>
+                        <textarea
+                            id="${field.id}"
+                            class="detail-textarea ${field.size || 'medium'}"
+                            rows="${field.rows || 3}"
+                            oninput="actionValues['${field.id}']=this.value; generate();"
+                        >${escapeHTML(actionValues[field.id] || "")}</textarea>
+                    `;
+                }
             }
 
             if(field.type==="radio"){

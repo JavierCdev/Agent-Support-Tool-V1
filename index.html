@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Generador de Notas</title>
+
+<link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>📝 Agent Support Tool</h1>
+
+<!-- REASON FOR CALL -->
+<div class="section-title small-title">
+    Reason for Call
+</div>
+
+<textarea
+    id="reasonForCall"
+    class="text-input"
+    rows="3"
+    placeholder="Describe briefly why the caller/member contacted us..."
+    oninput="generate()"></textarea>
+    <div id="reasonError" class="reason-error"></div>
+<!-- INTERACTION ID -->
+<div class="section-title small-title">🆔 Interaction ID</div>
+
+<div class="first-time">
+
+<input type="text"id="interactionInput"class="text-input"placeholder="Interaction ID"oninput="generate()">
+
+<input type="text"id="metInteractionInput"class="text-input"placeholder="Met Interaction ID"oninput="generate()">
+
+</div>
+<!-- CALLER NAME -->
+<div class="section-title small-title">🗣️ Caller Name</div>
+
+<input
+type="text"
+id="callerNameInput"
+class="text-input"
+placeholder="Enter caller name"
+oninput="generate()">
+
+<!-- CALLER / MEMBER -->
+<div class="section-title">👤 Type of Interaction</div>
+
+<div class="roles">
+
+<label>
+    <input type="radio"
+           name="interactionType"
+           id="caller"
+           onchange="generate()">
+    Caller
+</label>
+
+<label>
+    <input type="radio"
+           name="interactionType"
+           id="member"
+           onchange="generate()">
+    Member
+</label>
+
+</div>
+
+
+<!-- GENDER -->
+<div class="section-title">🧑 Gender</div>
+
+<div class="roles">
+
+<label>
+    <input type="radio"
+           name="gender"
+           id="male"
+           value="male"
+           onchange="generate()">
+    Male
+</label>
+
+<label>
+    <input type="radio"
+           name="gender"
+           id="female"
+           value="female"
+           onchange="generate()">
+    Female
+</label>
+
+</div>
+
+<!-- HIPAA -->
+<div class="section-title">🔐 HIPAA Verification</div>
+
+<div class="hipaa">
+
+<label><input type="checkbox" id="hipaa_mid" onchange="toggleHipaa()"> MID</label>
+
+<label><input type="checkbox" id="hipaa_dob" onchange="toggleHipaa()"> DOB</label>
+
+<label><input type="checkbox" id="hipaa_address" onchange="toggleHipaa()"> Addr</label>
+
+<label><input type="checkbox" id="hipaa_phone" onchange="toggleHipaa()"> PN</label>
+
+<label><input type="checkbox" id="hipaa_ivr" onchange="toggleHipaa()"> IVR</label>
+
+<label><input type="checkbox" id="hipaa_failed" onchange="toggleHipaa()"> Failed</label>
+
+</div>
+
+<!-- FIRST TIME -->
+<div class="section-title small-title">It is the first time you are calling for this matter?</div>
+<div class="first-time">
+
+<label class="small-option"><input type="radio" name="firstTime" value="Yes" onchange="generate()"> Yes</label>
+<label class="small-option"><input type="radio" name="firstTime" value="No" onchange="generate()"> No</label>
+
+</div>
+
+<!-- PERSONAL -->
+<div class="section-title small-title">Has any of your personal Information Changed recently?</div>
+<div class="first-time">
+
+<label class="small-option"><input type="radio" name="personalChange" value="Yes" onchange="generate()"> Yes</label>
+<label class="small-option"><input type="radio" name="personalChange" value="No" onchange="generate()"> No</label>
+
+</div>
+
+<!-- CONTACT -->
+<div class="section-title small-title">Is the Email and Phone Number still Valid?</div>
+<div class="first-time">
+
+<label class="small-option"><input type="radio" name="contactValid" value="Yes" onchange="generate()"> Yes</label>
+<label class="small-option"><input type="radio" name="contactValid" value="No" onchange="generate()"> No</label>
+
+</div>
+
+<!-- WEBSITE -->
+<div class="section-title small-title">Website</div>
+<div class="first-time">
+
+<label class="small-option"><input type="radio" name="website" value="Mentioned" onchange="generate()"> Mentioned</label>
+<label class="small-option"><input type="radio" name="website" value="Skipped" onchange="generate()"> Skipped</label>
+</div>
+
+<!-- ACTIONS -->
+
+<div class="section-title small-title">
+Actions
+</div>
+
+<div class="actions-container">
+
+    <input
+    type="text"
+    id="actionSearch"
+    class="text-input"
+    placeholder="🔍 Search action..."
+    oninput="searchActions()">
+
+    <div id="searchResults" class="search-results"></div>
+
+    <div class="actions-grid" id="favoriteActions">
+
+    </div>
+
+</div>
+
+<div class="section-title small-title">
+    Selected Actions
+</div>
+
+<div class="actions-grid" id="selectedActions">
+
+</div>
+
+<div class="section-title small-title">
+    Action Details
+</div>
+
+<div id="actionDetails">
+
+</div>
+
+<!-- IN HOME -->
+<div class="section-title small-title">In Home Assessment</div>
+<div class="first-time">
+
+<label class="small-option">
+<input type="radio" name="inHome" value="Mentioned" onchange="generate()">Mentioned</label>
+<label class="small-option"><input type="radio" name="inHome" value="Not relevant" onchange="generate()">Not relevant</label>
+
+</div>
+
+<!-- RESOLUTION -->
+<div class="section-title small-title">Resolution</div>
+
+<div class="first-time">
+
+<label class="small-option">
+<input
+    type="radio"
+    name="resolution"
+    value="Caller was educated about"
+    onchange="
+    document.getElementById('resolutionContainer').style.display='block';
+    generate();
+">
+Caller
+</label>
+
+<label class="small-option">
+<input
+    type="radio"
+    name="resolution"
+    value="Member was educated about"
+    onchange="
+    document.getElementById('resolutionContainer').style.display='block';
+    generate();
+">
+Member
+</label>
+
+</div>
+
+<div id="resolutionContainer" style="display:none;">
+
+    <div class="section-title small-title">
+        Resolution Details
+    </div>
+
+    <textarea
+        id="resolutionNotes"
+        class="text-input"
+        rows="2"
+        placeholder="This summary fills automatically from the information entered above."
+        readonly
+        oninput="generate()"></textarea>
+    <label class="small-option" style="margin-top:6px;display:inline-flex;align-items:center;gap:6px">
+        <input type="checkbox" id="editResolutionSummary" onchange="generate()">
+        Edit summary manually
+    </label>
+
+</div>
+
+<!-- OUTPUT -->
+<textarea id="nota" readonly></textarea>
+
+<button class="copy" onclick="copiar()">📋 Copy Note</button>
+
+<button class="reset-btn" onclick="resetForm()">
+    🔄 Reset Form
+</button>
+<div class="footer-credit">
+    Made with <span class="heart">❤️</span> for <strong>JC Creations</strong>
+    <small class="version">Ver. 1.5.0</small>
+</div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast">📋 Copied</div>
+
+<!-- CUSTOM MODAL -->
+<div id="customModal" class="modal-overlay">
+
+    <div class="modal-box">
+
+        <div id="modalIcon" class="modal-icon">
+            ⚠️
+        </div>
+
+        <h2 id="modalTitle" class="modal-title">
+            Confirm Action
+        </h2>
+
+        <p id="modalMessage" class="modal-message">
+            Are you sure?
+        </p>
+
+        <div id="modalActions" class="modal-actions">
+
+            <button
+                id="modalCancel"
+                class="modal-btn cancel"
+                onclick="closeModal()">
+                Cancel
+            </button>
+
+            <button
+                id="modalConfirm"
+                class="modal-btn confirm"
+                onclick="confirmModalAction()">
+                Confirm
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script src="js/app.js"></script>
+
+</body>
+</html>

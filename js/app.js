@@ -1806,6 +1806,141 @@ function parseClaimsTable(raw){
     return records;
 }
 
+function parseBenefitsPaste(raw){
+    const text = String(raw || "")
+        .replace(/\r\n?/g, "\n")
+        .replace(/\u00a0/g, " ");
+    if(!text.trim()) return [];
+
+    const lines = text.split("\n");
+    const record = createBlankRecord("benefits");
+    const cleanValue = value => String(value || "")
+        .replace(/^[\s•●▪◦]+|[\s•●▪◦]+$/g, "")
+        .trim();
+    const usefulValue = value => {
+        const cleaned = cleanValue(value);
+        return cleaned && !/^[-–—]+$/.test(cleaned) ? cleaned : "";
+    };
+    const lineValue = labelPattern => {
+        const expression = new RegExp(`^\\s*(?:${labelPattern})\\s*:\\s*(.*?)\\s*$`, "i");
+        for(const line of lines){
+            const match = line.match(expression);
+            if(match) return usefulValue(match[1]);
+        }
+        return "";
+    };
+    const sections = (labelPattern, stopPattern) => {
+        const result = [];
+        const startExpression = new RegExp(`^\\s*(?:${labelPattern})(?:\\s*:\\s*(.*))?\\s*$`, "i");
+        // Some plan tools paste headings and values together (for example, DeductibleN/A).
+        const stopExpression = new RegExp(`^\\s*(?:${stopPattern})`, "i");
+        lines.forEach((line, index) => {
+            const match = line.match(startExpression);
+            if(!match) return;
+            const content = [];
+            if(usefulValue(match[1])) content.push(cleanValue(match[1]));
+            for(let cursor = index + 1; cursor < lines.length; cursor++){
+                if(stopExpression.test(lines[cursor])) break;
+                const value = lines[cursor].trim().replace(/^[•●▪◦]\s*/, "");
+                if(value && !/^[-–—]+$/.test(value)) content.push(value);
+            }
+            const value = content.join(" ").replace(/\s+/g, " ").trim();
+            if(value) result.push(value);
+        });
+        return result;
+    };
+
+    // The first copied row joins adjacent columns. Cut it at the known provider/network column.
+    const firstRow = (lines.find(line => line.trim()) || "").trim();
+    let benefitName = firstRow.includes("\t") ? firstRow.split("\t")[0].trim() : firstRow;
+    if(!firstRow.includes("\t")){
+        const rowMarker = /(?:Dentist Office|In[ -]Network|Out[ -]of[ -]Network)/i.exec(benefitName);
+        if(rowMarker){
+            benefitName = benefitName.slice(0, rowMarker.index).trim();
+            // The category is concatenated after the benefit name in this tool's copied row.
+            benefitName = benefitName.replace(/Dental Services\s*$/i, "").trim();
+        }
+    }
+    record.benefitName = benefitName.replace(/[\s–—-]+$/, "").trim();
+
+    const authorization = lineValue("Authorization Required").match(/\b(yes|no)\b/i);
+    record.authorizationRequired = authorization ? authorization[1][0].toUpperCase() + authorization[1].slice(1).toLowerCase() : "";
+    record.copayment = lineValue("Co[- ]?Payment|Copay");
+    record.coinsurance = lineValue("Co[- ]?Insurance|Coinsurance");
+
+    const coverageValues = sections("Coverage", "Copay|Limit|Note|Dental Vendor|Prophylaxis|Description");
+    record.coverage = coverageValues.length ? coverageValues[coverageValues.length - 1] : "";
+    const limitValues = sections("Limits?", "Conditions|Deductible|Maximum_Out_Of_Pocket|Combined_Limit|Part_B_Giveback|Part_C|Part_D|Total_Premium|Exclusions|Inclusions|Notes?|Dental Vendor|Prophylaxis|Description|Coverage|Copay");
+    record.limit = limitValues.length ? limitValues[limitValues.length - 1] : "";
+
+    const vendorLine = lines.find(line => /^\s*Vendor Contact\s*:/i.test(line)) || "";
+    const vendorDetails = vendorLine.replace(/^\s*Vendor Contact\s*:\s*/i, "").trim();
+    const phoneMatch = vendorDetails.match(/\b\d{3}[-. ]\d{3}[-. ]\d{4}\b/);
+    if(phoneMatch){
+        record.vendorName = vendorDetails.slice(0, phoneMatch.index).trim();
+        record.vendorPhone = phoneMatch[0];
+    }else if(vendorDetails){
+        record.vendorName = vendorDetails;
+    }
+
+    const extraNotes = [];
+    const addExtra = value => {
+        const cleaned = cleanValue(value);
+        if(cleaned && !extraNotes.includes(cleaned)) extraNotes.push(cleaned);
+    };
+
+    const referral = lineValue("Referral Required");
+    const maximum = lineValue("Benefit Maximum");
+    if(referral) addExtra(`Referral Required: ${referral}`);
+    if(maximum) addExtra(`Benefit Maximum: ${maximum}`);
+
+    sections("Description", "Prophylaxis|Coverage|Copay|Limit|Note|Dental Vendor").forEach(value => addExtra(`Description: ${value}`));
+    sections("Notes?", "Dental Vendor|Prophylaxis|Description|Coverage|Deductible|Maximum_Out_Of_Pocket|Combined_Limit|Part_B_Giveback|Part_C|Part_D|Total_Premium").forEach(addExtra);
+    sections("Copay", "Limit|Note|Dental Vendor|Prophylaxis|Description").forEach(value => addExtra(`Copay details: ${value}`));
+    sections("Conditions|Exclusions|Inclusions", "Conditions|Exclusions|Inclusions|Deductible|Maximum_Out_Of_Pocket|Combined_Limit|Part_B_Giveback|Part_C|Part_D|Total_Premium|Notes?|Dental Vendor|Prophylaxis|Description|Coverage|Copay|Limit").forEach(addExtra);
+
+    if(vendorDetails && phoneMatch){
+        const vendorRemainder = vendorDetails.slice(phoneMatch.index + phoneMatch[0].length).trim();
+        if(vendorRemainder) addExtra(`Vendor hours: ${vendorRemainder}`);
+    }
+
+    // Preserve the plan-level amounts shown in the copied tool output without confusing them
+    // with the service copayment or limit fields above.
+    const financialLabels = [
+        ["Deductible", "Deductible"],
+        ["Maximum_Out_Of_Pocket", "Maximum out of pocket"],
+        ["Combined_Limit", "Combined limit"],
+        ["Part_B_Giveback", "Part B giveback"],
+        ["Part_C", "Part C"],
+        ["Part_D_Total", "Part D total"],
+        ["Part_D_Basic", "Part D basic"],
+        ["Part_D_Supplemental", "Part D supplemental"],
+        ["Total_Premium_Part_C_D", "Total premium Part C/D"]
+    ];
+    const lowerText = text.toLowerCase();
+    const foundFinancials = financialLabels
+        .map(([key, label]) => ({ key, label, index: lowerText.indexOf(key.toLowerCase()) }))
+        .filter(item => item.index >= 0)
+        .sort((a, b) => a.index - b.index);
+    const planAmounts = foundFinancials.map((item, index) => {
+        const nextIndex = foundFinancials[index + 1]?.index ?? text.length;
+        const value = text.slice(item.index + item.key.length, nextIndex)
+            .replace(/^[\s:;\-–—]+/, "")
+            .replace(/[\s;]+$/, "")
+            .trim()
+            .split(/\s+/)[0];
+        return value ? `${item.label}: ${value}` : "";
+    }).filter(Boolean);
+    if(planAmounts.length) addExtra(`Plan amounts: ${planAmounts.join("; ")}`);
+
+    const notes = extraNotes.join("\n");
+    record.additionalNotes = notes;
+
+    // Do not create an empty benefit card when unrelated text was pasted.
+    const hasBenefitData = Object.entries(record).some(([key, value]) => key !== "id" && String(value || "").trim());
+    return hasBenefitData ? [record] : [];
+}
+
 function importRepeatedRecords(kind){
     const input = document.getElementById(`bulkPaste-${kind}`);
     const raw = input?.value.trim();
@@ -1819,7 +1954,11 @@ function importRepeatedRecords(kind){
         chunk.push(line);
     });
     if(chunk.length) chunks.push(chunk);
-    const records = kind === "claims" ? parseClaimsTable(raw) : [];
+    const records = kind === "claims"
+        ? parseClaimsTable(raw)
+        : kind === "benefits"
+            ? parseBenefitsPaste(raw)
+            : [];
     const fields = repeatedRecordConfigs[kind]?.fields || [];
     const aliases = {
         "claim number": "claimNumber",
@@ -2290,7 +2429,6 @@ function buildAutomaticResolutionSummary(){
 
     const benefits = benefitRecords.map(record => {
         const name = clean(record.benefitName);
-        const notes = summarizeNote(record.additionalNotes);
         const values = [
             record.authorizationRequired && `authorization required: ${clean(record.authorizationRequired)}`,
             record.coverage && `coverage ${clean(record.coverage)}`,
@@ -2299,9 +2437,9 @@ function buildAutomaticResolutionSummary(){
             record.limit && `limit ${clean(record.limit)}`,
             record.vendorName && `vendor ${clean(record.vendorName)}`
         ].filter(Boolean);
-        if(!name && !values.length && !notes) return "";
+        if(!name && !values.length) return "";
         const description = values.length ? ` (${values.join(", ")})` : "";
-        return `${name || "benefit details"}${description}${notes ? `: ${notes}` : ""}`;
+        return `${name || "benefit details"}${description}`;
     }).filter(Boolean);
     if(selectedIds.has("benefitsEligibility") && benefits.length) actionSummaries.push(`benefits reviewed: ${benefits.join("; ")}`);
 
@@ -4388,6 +4526,8 @@ if(field.type === "multiBenefits"){
         <button type="button" class="copy" onclick="addRepeatedRecord('benefits')">
             + Add Benefit
         </button>
+        <textarea id="bulkPaste-benefits" class="detail-textarea small" onpaste="setTimeout(() => importRepeatedRecords('benefits'), 0)" placeholder="Paste copied benefit details here..."></textarea>
+        <button type="button" class="copy" onclick="importRepeatedRecords('benefits')">Import pasted benefits</button>
         <div id="benefitRecordsList"></div>
     `;
     renderRepeatedRecords("benefits", "benefitRecordsList");

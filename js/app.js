@@ -1690,6 +1690,68 @@ let preferenceCounter = 0;
 let providers = [];
 let providerCounter = 0;
 
+const genericResolutionOutcomes = [
+    "Information was provided",
+    "Request was submitted",
+    "Update was completed",
+    "Member was transferred",
+    "Issue was escalated",
+    "Follow-up is pending",
+    "No further action was needed",
+    "Request could not be completed"
+];
+
+const resolutionOutcomeOptions = {
+    hottopics: ["Question was answered", "Information was explained", "Follow-up is pending", "No further action was needed"],
+    Issues: ["Appeal process was explained", "Appeal request was submitted", "Grievance process was explained", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
+    languageServices: ["Interpreter joined the call", "Interpreter appointment was scheduled", "Interpreter appointment was canceled", "Request could not be completed", "Follow-up is pending"],
+    lvs: ["Claim or account status was explained", "Information was provided", "Follow-up is pending", "No further action was needed"],
+    material: ["Materials were requested", "Address was verified", "Request could not be completed", "Follow-up is pending"],
+    transportation: ["Transportation issue was resolved", "Transportation issue was escalated", "Information was provided", "Follow-up is pending", "Request could not be completed"],
+    newmemberprocess: ["New member information was explained", "Enrollment assistance was provided", "Follow-up is pending", "No further action was needed"],
+    providersearchinq: ["Provider information was provided", "Provider search was completed", "No matching provider was found", "Member was transferred", "Follow-up is pending"],
+    reinstateplan: ["Reinstatement request was submitted", "Plan reinstatement was completed", "Eligibility information was explained", "Follow-up is pending", "Request could not be completed"],
+    benefitsEligibility: ["Coverage was confirmed", "Benefit details were explained", "Coverage limitations were explained", "Member was transferred to the benefit vendor", "Follow-up is pending", "No further action was needed"],
+    updatepcp: ["PCP was updated", "PCP change request was submitted", "PCP information was provided", "Follow-up is pending", "Request could not be completed"],
+    accumulator: ["Accumulator information was explained", "Balance was verified", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
+    gaps: ["Reminder was explained", "Appointment was scheduled", "Member will schedule the appointment", "Follow-up is pending", "No further action was needed"],
+    claimsinquiry: ["Claim status was explained", "Denial reason was explained", "Appeal process was explained", "Appeal request was submitted", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
+    medicalauthorizationinquiry: ["Authorization status was explained", "Authorization request was submitted", "Authorization was approved", "Authorization was denied", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
+    pharmacyauthorizationinquiry: ["Authorization status was explained", "Authorization request was submitted", "Authorization was approved", "Authorization was denied", "Member was transferred to the Part D team", "Follow-up is pending", "No further action was needed"],
+    pharmacyclaims: ["Pharmacy claim status was explained", "Pharmacy claim issue was escalated", "Information was provided", "Follow-up is pending", "No further action was needed"],
+    cancellationdisenroll: ["Cancellation request was submitted", "Disenrollment information was explained", "Follow-up is pending", "Request could not be completed"],
+    billinginqandpay: ["Billing information was explained", "Payment was processed", "Billing issue was escalated", "Follow-up is pending", "No further action was needed"],
+    caremanagement: ["Care management information was provided", "Referral was submitted", "Member was transferred", "Follow-up is pending", "No further action was needed"],
+    changeplaninq: ["Plan change information was explained", "Plan change request was submitted", "Follow-up is pending", "Request could not be completed"],
+    coordinationofbenefits: ["Coordination of benefits was updated", "Information was provided", "Issue was escalated", "Follow-up is pending"],
+    lowincomesubsidy: ["Low Income Subsidy information was explained", "Application assistance was provided", "Follow-up is pending", "No further action was needed"],
+    notificationofdeath: ["Notification was recorded", "Required next steps were explained", "Follow-up is pending"],
+    outofareanotif: ["Out-of-area information was recorded", "Coverage information was explained", "Follow-up is pending", "No further action was needed"],
+    returnmail: ["Address information was reviewed", "Mail issue was resolved", "Follow-up is pending", "No further action was needed"],
+    scheduleactivity: ["Activity was scheduled", "Activity details were updated", "Follow-up is pending", "Request could not be completed"],
+    updatememberpreferences: ["Member preference was updated", "Update request was submitted", "Follow-up is pending", "Request could not be completed"],
+    memberdemographics: ["Member information was updated", "Update request was submitted", "Follow-up is pending", "Request could not be completed"]
+};
+
+function resolutionOutcomeKey(actionId){
+    return `resolution_outcome_${actionId}`;
+}
+
+function renderResolutionOutcome(action, container){
+    const key = resolutionOutcomeKey(action.id);
+    const options = resolutionOutcomeOptions[action.id] || genericResolutionOutcomes;
+    const selected = actionValues[key] || "";
+
+    container.insertAdjacentHTML("beforeend", `
+        <label class="detail-label" for="${key}">Call outcome (optional)</label>
+        <select id="${key}" class="text-input" onchange="actionValues['${key}']=this.value; generate();">
+            <option value="" ${selected ? "" : "selected"}>Select what happened...</option>
+            ${options.map(option => `<option value="${escapeHTML(option)}" ${selected === option ? "selected" : ""}>${escapeHTML(option)}</option>`).join("")}
+        </select>
+        <small class="resolution-outcome-help">Choose only the result that happened. It will appear in Resolution.</small>
+    `);
+}
+
 function normalizeClaimTableHeader(value){
     return String(value || "")
         .trim()
@@ -1801,6 +1863,140 @@ function parseClaimsTable(raw){
         record.providerName = cells[6] || "";
         record.status = cells[7] || "";
         record.amountBilled = cells[8] || "";
+        if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
+    });
+    return records;
+}
+
+function authorizationTableFieldKey(value){
+    const aliases = {
+        "auth number": "authorizationNumber",
+        "authorization number": "authorizationNumber",
+        "authorization certification number": "authorizationNumber",
+        "provider facility name": "providerName",
+        "provider name": "providerName",
+        "facility name": "providerName",
+        "start date": "serviceFrom",
+        "service from": "serviceFrom",
+        "end date": "serviceTo",
+        "service to": "serviceTo",
+        "auth type": "authorizationType",
+        "authorization type": "authorizationType",
+        "type of care": "typeOfCare",
+        "status": "status",
+        "icd": "icd",
+        "icd code": "icd",
+        "procedure code": "procedureCode",
+        "procedure description": "procedureDescription",
+        "business line": "businessLine"
+    };
+    return aliases[normalizeClaimTableHeader(value)] || null;
+}
+
+function parseLineBasedAuthorizations(raw, kind){
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const isDate = value => /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(value);
+    const isAuthNumber = value => /^[A-Z0-9-]{8,}$/i.test(value) && /\d/.test(value);
+    const isStatus = value => /\b(?:partial[_ ]?approve|approve(?:d)?|deny|denied|pend(?:ing)?|reject(?:ed)?|cancel(?:led)?|in review)\b/i.test(value);
+    const isProcedureCode = value => /^(?:\d{4,5}(?:-\d{2})?|[A-Z]\d{4})$/i.test(value);
+    const authIndexes = [];
+
+    lines.forEach((line, index) => {
+        if(isAuthNumber(line)) authIndexes.push(index);
+    });
+    if(!authIndexes.length) return [];
+
+    const records = [];
+    authIndexes.forEach((authIndex, position) => {
+        const nextAuthIndex = authIndexes[position + 1] ?? lines.length;
+        const following = lines.slice(authIndex + 1, nextAuthIndex);
+        const dateIndexes = following.map((value, index) => isDate(value) ? index : -1).filter(index => index >= 0);
+        if(dateIndexes.length < 2) return;
+
+        const firstDateIndex = dateIndexes[0];
+        const secondDateIndex = dateIndexes[1];
+        const tail = following.slice(secondDateIndex + 1);
+        const statusIndex = tail.findIndex(isStatus);
+        if(statusIndex < 0) return;
+
+        const preStatus = tail.slice(0, statusIndex);
+        let authorizationType = preStatus[0] || "";
+        let typeOfCare = preStatus.slice(1).join(" ");
+        if(/^IP$/i.test(authorizationType) && /^INPATIENT$/i.test(preStatus[1] || "")){
+            authorizationType = "IP INPATIENT";
+            typeOfCare = preStatus.slice(2).join(" ");
+        }else if(/^OP$/i.test(authorizationType) && /^OUTPATIENT$/i.test(preStatus[1] || "")){
+            authorizationType = "OP OUTPATIENT";
+            typeOfCare = preStatus.slice(2).join(" ");
+        }
+
+        const afterStatus = tail.slice(statusIndex + 1);
+        const procedureIndex = afterStatus.findIndex(isProcedureCode);
+        const businessLineIndex = afterStatus.findIndex(value => /^(?:medicare|medicaid|commercial|marketplace|dual(?: eligible)?)$/i.test(value));
+        const actionIndex = afterStatus.findIndex(value => /^(?:no action|no action needed)$/i.test(value));
+        const descriptionEnd = businessLineIndex >= 0 ? businessLineIndex : (actionIndex >= 0 ? actionIndex : afterStatus.length);
+        const record = createBlankRecord(kind);
+        record.authorizationNumber = lines[authIndex];
+        record.providerName = following.slice(0, firstDateIndex).join(" ");
+        record.serviceFrom = following[firstDateIndex];
+        record.serviceTo = following[secondDateIndex];
+        record.authorizationType = authorizationType;
+        record.typeOfCare = typeOfCare;
+        record.status = tail[statusIndex];
+        record.icd = afterStatus.slice(0, procedureIndex >= 0 ? procedureIndex : afterStatus.length)
+            .filter(value => /^ICD(?:-?\d{1,2})?$/i.test(value) || /^[A-Z]\d{2}(?:\.\d+)?$/i.test(value))
+            .join(" ");
+        record.procedureCode = procedureIndex >= 0 ? afterStatus[procedureIndex] : "";
+        record.procedureDescription = procedureIndex >= 0
+            ? afterStatus.slice(procedureIndex + 1, descriptionEnd > procedureIndex ? descriptionEnd : afterStatus.length)
+                .filter(value => !/^(?:no action|no action needed)$/i.test(value))
+                .join(" ")
+            : "";
+        record.businessLine = businessLineIndex >= 0 ? afterStatus[businessLineIndex] : "";
+        records.push(record);
+    });
+    return records;
+}
+
+function parseAuthorizationTable(raw, kind){
+    if(!raw.includes("\t")) return parseLineBasedAuthorizations(raw, kind);
+    const rows = raw.split(/\r?\n/)
+        .filter(line => line.trim())
+        .map(line => line.split("\t").map(cell => cell.trim()));
+    if(!rows.length) return [];
+
+    const fields = repeatedRecordConfigs[kind]?.fields || [];
+    const isHeader = cells => {
+        const keys = cells.map(authorizationTableFieldKey);
+        return keys.includes("authorizationNumber") && keys.includes("serviceFrom") && keys.includes("serviceTo");
+    };
+    const headerIndex = rows.findIndex(isHeader);
+    const records = [];
+
+    if(headerIndex >= 0){
+        const header = rows[headerIndex].map(authorizationTableFieldKey);
+        rows.slice(headerIndex + 1).forEach(cells => {
+            if(isHeader(cells)) return;
+            const record = createBlankRecord(kind);
+            header.forEach((key, index) => {
+                if(key && fields.some(field => field.key === key)) record[key] = cells[index] || "";
+            });
+            if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
+        });
+        return records;
+    }
+
+    // Headerless copied rows follow the Authorization grid column order shown in the tool.
+    rows.forEach(sourceCells => {
+        const cells = [...sourceCells];
+        while(cells.length && (!cells[0] || /^[▸▶▷>]+$/.test(cells[0]))) cells.shift();
+        if(cells.length < 11) return;
+        const record = createBlankRecord(kind);
+        [
+            "authorizationNumber", "providerName", "serviceFrom", "serviceTo",
+            "authorizationType", "typeOfCare", "status", "icd", "procedureCode",
+            "procedureDescription", "businessLine"
+        ].forEach((key, index) => { record[key] = cells[index] || ""; });
         if(fields.some(field => String(record[field.key] || "").trim())) records.push(record);
     });
     return records;
@@ -1956,6 +2152,8 @@ function importRepeatedRecords(kind){
     if(chunk.length) chunks.push(chunk);
     const records = kind === "claims"
         ? parseClaimsTable(raw)
+        : kind === "medicalAuthorization" || kind === "pharmacyAuthorization"
+            ? parseAuthorizationTable(raw, kind)
         : kind === "benefits"
             ? parseBenefitsPaste(raw)
             : [];
@@ -1963,11 +2161,25 @@ function importRepeatedRecords(kind){
     const aliases = {
         "claim number": "claimNumber",
         "authorization number": "authorizationNumber",
+        "authorization certification number": "authorizationNumber",
         "auth number": "authorizationNumber",
-        "service from": "serviceFrom",
-        "service to": "serviceTo",
+        "provider/facility name": "providerName",
+        "provider / facility name": "providerName",
+        "facility name": "providerName",
         "provider name": "providerName",
+        "start date": "serviceFrom",
+        "service from": "serviceFrom",
+        "end date": "serviceTo",
+        "service to": "serviceTo",
+        "auth type": "authorizationType",
+        "authorization type": "authorizationType",
+        "type of care": "typeOfCare",
         "status": "status",
+        "icd": "icd",
+        "icd code": "icd",
+        "procedure code": "procedureCode",
+        "procedure description": "procedureDescription",
+        "business line": "businessLine",
         "amount billed": "amountBilled"
     };
     if(!records.length){
@@ -2012,23 +2224,33 @@ const repeatedRecordConfigs = {
     medicalAuthorization: {
         title: "Authorization",
         fields: [
-            { key: "authorizationNumber", label: "Authorization number" },
-            { key: "serviceFrom", label: "Service From", placeholder: "MM/DD/YYYY" },
-            { key: "serviceTo", label: "Service To", placeholder: "MM/DD/YYYY" },
-            { key: "providerName", label: "Provider Name" },
-            { key: "status", label: "Status", placeholder: "DENY / APPROVED / PENDING" },
-            { key: "amountBilled", label: "Amount Billed", placeholder: "$0.00" }
+            { key: "authorizationNumber", label: "Auth number" },
+            { key: "providerName", label: "Provider/Facility name" },
+            { key: "serviceFrom", label: "Start date", placeholder: "MM/DD/YYYY" },
+            { key: "serviceTo", label: "End date", placeholder: "MM/DD/YYYY" },
+            { key: "authorizationType", label: "Auth type" },
+            { key: "typeOfCare", label: "Type of care" },
+            { key: "status", label: "Status", placeholder: "APPROVE / PARTIAL_APPROVE / DENY / PENDING" },
+            { key: "icd", label: "ICD" },
+            { key: "procedureCode", label: "Procedure code" },
+            { key: "procedureDescription", label: "Procedure description" },
+            { key: "businessLine", label: "Business Line" }
         ]
     },
     pharmacyAuthorization: {
         title: "Authorization",
         fields: [
-            { key: "authorizationNumber", label: "Authorization number" },
-            { key: "serviceFrom", label: "Service From", placeholder: "MM/DD/YYYY" },
-            { key: "serviceTo", label: "Service To", placeholder: "MM/DD/YYYY" },
-            { key: "providerName", label: "Provider Name" },
-            { key: "status", label: "Status", placeholder: "DENY / APPROVED / PENDING" },
-            { key: "amountBilled", label: "Amount Billed", placeholder: "$0.00" }
+            { key: "authorizationNumber", label: "Auth number" },
+            { key: "providerName", label: "Provider/Facility name" },
+            { key: "serviceFrom", label: "Start date", placeholder: "MM/DD/YYYY" },
+            { key: "serviceTo", label: "End date", placeholder: "MM/DD/YYYY" },
+            { key: "authorizationType", label: "Auth type" },
+            { key: "typeOfCare", label: "Type of care" },
+            { key: "status", label: "Status", placeholder: "APPROVE / PARTIAL_APPROVE / DENY / PENDING" },
+            { key: "icd", label: "ICD" },
+            { key: "procedureCode", label: "Procedure code" },
+            { key: "procedureDescription", label: "Procedure description" },
+            { key: "businessLine", label: "Business Line" }
         ]
     },
     benefits: {
@@ -2080,12 +2302,7 @@ function renderRepeatedRecords(kind, containerId){
     const records = getRepeatedRecords(kind);
     const config = repeatedRecordConfigs[kind];
 
-    if(!records.length){
-        container.innerHTML = "";
-        return;
-    }
-
-    container.innerHTML = records.map((record, index)=>`
+    const recordCards = records.map((record, index)=>`
         <div class="action-detail-card">
             <div class="action-detail-header">
                 <div class="action-detail-title">${config.title} ${index + 1}</div>
@@ -2109,6 +2326,12 @@ function renderRepeatedRecords(kind, containerId){
             </div>
         </div>
     `).join("");
+
+    container.innerHTML = `${recordCards}
+        <button type="button" class="copy" onclick="addRepeatedRecord('${kind}')">
+            + Add ${escapeHTML(config.title)}
+        </button>
+    `;
 }
 
 function addRepeatedRecord(kind){
@@ -2135,8 +2358,9 @@ function updateRepeatedRecord(kind, index, field, value){
 
 function formatRepeatedRecordNotes(kind, heading){
     const config = repeatedRecordConfigs[kind];
+    const records = getRepeatedRecords(kind);
     let recordNumber = 0;
-    return getRepeatedRecords(kind).map(record=>{
+    const formattedRecords = records.map(record=>{
         const lines = config.fields
             .filter(field => String(record[field.key] || "").trim() !== "")
             .map(field => `${field.label}: ${String(record[field.key]).trim()}`);
@@ -2144,6 +2368,12 @@ function formatRepeatedRecordNotes(kind, heading){
         recordNumber += 1;
         return `${heading} ${recordNumber}:\n${lines.join("\n")}\n`;
     }).filter(Boolean).join("");
+    const hasMedicareBusinessLine = kind === "medicalAuthorization"
+        && records.some(record => /\bmedicare\b/i.test(String(record.businessLine || "")));
+    const disclaimer = hasMedicareBusinessLine
+        ? "Disclaimer: Medicare Line of business: Treatment for Medical, Physical, Sexual or Mental health emergencies do not require prior authorization.\n"
+        : "";
+    return `${disclaimer}${formattedRecords}`;
 }
 
 function buildReason(reason, interactionType, pronoun) {
@@ -2241,72 +2471,53 @@ function buildAutomaticResolutionSummary(){
 
     // Summarize notes without copying the structured identifiers already shown in the note body.
     const summarizeNote = value => {
-        let note = String(value ?? "").trim();
-        if(!note) return "";
-        note = note
-            .replace(/(?:Claim|Authorization|Auth)\s*(?:number|#)\s*:\s*[^\n;]+/gi, " ")
-            .replace(/(?:Service From|Service To|Provider Name|Amount Billed|Member ID|Member Name|Interaction ID|Phone(?: Number)?|Address|NPI|Date of Birth|ZIP Code|Email|Medicaid ID|Medicare ID|Social Security|SSN)\s*:\s*[^\n;]+/gi, " ")
-            .replace(/\b(?:claim|authorization|auth)\s+(?:number\s*[:#]?\s*|#\s*)?([A-Z0-9-]{6,})\b(?:\s+(?:and|,)\s*)?/gi, (match, identifier) => /\d/.test(identifier) ? " " : match)
-            .replace(/\b(?:Summary of Concerns|Education Text)\s*:?/gi, " ")
-            .replace(/^(?:the\s+)?(?:member|caller)\s+(?:is\s+)?(?:calling|called|contacted us)\s+(?:because|to|about|due to)?\s*/i, "")
-            .replace(/^(?:additional\s+)?notes?\s*:\s*/i, "")
+        const raw = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+        if(!raw) return "";
+
+        const fieldLabels = "Claim number|Claim type|Authorization number|Auth number|Service From|Service To|Adjustment indicator|Provider Name|Service provider|Member ID|Member Name|Interaction ID|Amount billed|Phone(?: Number)?|Address|NPI|Date of Birth|ZIP Code|Email|Medicaid ID|Medicare ID|Social Security|SSN|Status|LOB|Action|Notes?|Summary of Concerns|Education Text";
+        const fieldBoundary = new RegExp(`\\s+(?=(?:${fieldLabels})\\s*:)`, "gi");
+        const identifierLine = new RegExp(`^\\s*(?:Claim number|Claim type|Authorization number|Auth number|Service From|Service To|Adjustment indicator|Provider Name|Service provider|Member ID|Member Name|Interaction ID|Amount billed|Phone(?: Number)?|Address|NPI|Date of Birth|ZIP Code|Email|Medicaid ID|Medicare ID|Social Security|SSN|Status|LOB)\\s*:` , "i");
+        const outcomeSignals = /\b(?:appeal\w*|escalat\w*|warm[- ]transfer\w*|transferred|transfer completed|explained|educated|advised|informed|understood|no further questions|scheduled|completed|confirmed|submitted|processed|updated|reinstated|cancelled|resolved|referred|notified|unable to|pending follow[- ]up|will be contacted|will follow up|no action needed)\b/i;
+
+        // Split flattened, labeled tool output before removing identifier-only fields.
+        const lines = raw.replace(fieldBoundary, "\n").split(/\n+/);
+        const usefulLines = lines.flatMap(line => line.split(/\s*[;|]\s*/))
+            .map(line => line.trim())
+            .filter(line => {
+                if(!line || identifierLine.test(line)) return false;
+                if(/^(?:Claim|Authorization|Auth)\s*\d+\s*[-–—:]?$/i.test(line)) return false;
+                return true;
+            })
+            .map(line => line
+                .replace(/^(?:Summary of Concerns|Education Text)\s*:?\s*/i, "")
+                .replace(/^(?:Additional )?Notes?\s*:\s*/i, "")
+                .trim())
+            .filter(line => line && !/^(?:intent was opened|to assist the caller|no additional notes)/i.test(line));
+
+        const sentences = [...new Set(usefulLines
+            .join(" ")
             .replace(/[ \t]+/g, " ")
-            .replace(/\s*\n\s*/g, " ")
-            .replace(/\s{2,}/g, " ")
-            .replace(/^[\s;,:.\-–—]+|[\s;,:.\-–—]+$/g, "")
-            .trim();
-        if(!note || /^(?:intent was opened|to assist the caller|no additional notes)/i.test(note)) return "";
-        const useful = note.split(/(?<=[.!?])\s+/)
-            .map(sentence => sentence.trim())
-            .filter(sentence => sentence && !/^(?:intent was opened|to assist the caller)/i.test(sentence));
-        const resolutionSignals = /\b(?:appeal|escalat\w*|warm[- ]transfer\w*|transfer\w*|provided|contact\w*|will be contacted|understood|no further questions|scheduled|completed|confirmed|denied|approved|covered|not covered|copay|co-pay|reward|authorization|out-of-network|in-network|terminat\w*|rollover|automatic|no action|requested|sent|rejected|exception|not offered|will be closed|assisted|unable)\b/i;
-        const keySentences = useful.filter((sentence, index) => index < 2 || resolutionSignals.test(sentence));
-        const excerpt = [...new Set(keySentences)].slice(0, 4).join(" ");
-        return excerpt.length > 320 ? `${excerpt.slice(0, 317).trim()}...` : excerpt;
+            .split(/(?<=[.!?])\s+/)
+            .map(sentence => sentence.trim().replace(/^[\s;,:.\-–—]+|[\s;,:.\-–—]+$/g, ""))
+            .filter(Boolean))];
+        if(!sentences.length) return "";
+
+        // Prefer explicit actions or outcomes near the end; otherwise keep the last useful sentences.
+        const outcomeSentences = sentences.filter(sentence => outcomeSignals.test(sentence)).slice(-3);
+        const candidates = outcomeSentences.length ? outcomeSentences : sentences.slice(-2);
+        const chosen = [];
+        let length = 0;
+        for(const sentence of [...candidates].reverse()){
+            if(chosen.length && length + sentence.length + 1 > 400) break;
+            chosen.push(sentence);
+            length += sentence.length + 1;
+        }
+        return chosen.reverse().join(" ");
     };
 
-    const originalReason = clean(document.getElementById("reasonForCall")?.value)
-        .split(/\badditional details\b|claim\s*1\s*[-:]/i)[0]
-        .replace(/[.!?]+$/, "");
-    const deniedCount = originalReason.match(/\b(\d+)\s+(?:claims?\s+(?:that\s+)?(?:(?:have|has)\s+been\s+|(?:were|was|are|is)\s+)?denied|denied\s+claims?)\b/i);
-    const approvedCount = originalReason.match(/\b(\d+)\s+(?:claims?\s+(?:that\s+)?(?:(?:have|has)\s+been\s+|(?:were|was|are|is)\s+)?approved|approved\s+claims?)\b/i);
-    let subject = "";
-    if(deniedCount) subject = `${deniedCount[1]} ${Number(deniedCount[1]) === 1 ? "denied claim" : "denied claims"}`;
-    else if(approvedCount) subject = `${approvedCount[1]} ${Number(approvedCount[1]) === 1 ? "approved claim" : "approved claims"}`;
-    else{
-        subject = originalReason
-            .replace(/^(?:(?:the )?(?:member|caller)\s+)?(?:(?:is|was)\s+)?(?:calling(?: us)?|called(?: us)?|contacting us)\s+(?:because|to|about|for)\s+/i, "")
-            .replace(/^(?:the )?(?:member|caller)\s+(?:would like|wants|needs)\s+to\s+/i, "")
-            .replace(/^(?:she|he|they)\s+(?:has|have)\s+/i, "")
-            .replace(/^(?:she|he|they|the member|the caller)\s+(?:would like|wants|needs)\s+to\s+/i, "")
-            .replace(/^(?:(?:would like|wants|needs)\s+to\s+)?(?:get|receive|seek|request)\s+(?:some\s+)?(?:assistance|help)\s+(?:with|for|regarding|due to|by)\s+/i, "")
-            .replace(/^(?:assistance|help)\s+(?:with|for|regarding|due to|by)\s+/i, "")
-            .replace(/^get\s+(.+?)\s+to\s+get\s+installed\s+on\s+(?:her|his|their|the member's)\s+phone$/i, "install $1")
-            .replace(/^(?:to\s+)?(?:verify|check|review)\s+/i, "")
-            .trim();
-    }
-
-    const recordSummary = (records, noun) => {
-        const filled = records.filter(record => Object.entries(record).some(([key, value]) => key !== "id" && clean(value)));
-        if(!filled.length) return "";
-        const counts = {};
-        filled.forEach(record => {
-            const status = clean(record.status).toLowerCase();
-            const normalized = /deny|denied/.test(status) ? "denied"
-                : /approve|approved/.test(status) ? "approved"
-                : /pend|pending/.test(status) ? "pending" : "";
-            if(normalized) counts[normalized] = (counts[normalized] || 0) + 1;
-        });
-        const statusEntries = Object.entries(counts);
-        if(statusEntries.length === 1 && statusEntries[0][1] === filled.length){
-            return `${filled.length} ${statusEntries[0][0]} ${noun}${filled.length === 1 ? "" : "s"}`;
-        }
-        if(statusEntries.length){
-            const statusText = statusEntries.map(([status, count]) => `${count} ${status}`).join(", ");
-            return `${filled.length} ${noun}${filled.length === 1 ? "" : "s"} (${statusText})`;
-        }
-        return `${filled.length} ${noun}${filled.length === 1 ? "" : "s"}`;
-    };
+    const hasEnteredRecord = records => records.some(record =>
+        Object.entries(record).some(([key, value]) => key !== "id" && clean(value))
+    );
 
     const actionSummaries = [];
     const selectedIds = new Set(selectedActions.map(action => action.id));
@@ -2317,17 +2528,19 @@ function buildAutomaticResolutionSummary(){
 
     selectedActions.forEach(action => {
         const id = action.id;
+        const explicitOutcome = clean(actionValues[resolutionOutcomeKey(id)]);
+        if(explicitOutcome){
+            actionSummaries.push(`${action.name}: ${explicitOutcome}`);
+            return;
+        }
         if(id === "claimsinquiry"){
-            const claims = recordSummary(claimsRecords, "claim");
-            if(claims && clean(claims).toLowerCase() !== clean(subject).toLowerCase()) actionSummaries.push(`Claims reviewed: ${claims}`);
+            if(hasEnteredRecord(claimsRecords)) actionSummaries.push("claim details reviewed");
             addNote(actionSummaries, actionValues.claims_inquiry_notes);
             return;
         }
         if(id === "medicalauthorizationinquiry" || id === "pharmacyauthorizationinquiry"){
             const records = id === "medicalauthorizationinquiry" ? medicalAuthorizationRecords : pharmacyAuthorizationRecords;
-            const noun = id === "medicalauthorizationinquiry" ? "medical authorization" : "pharmacy authorization";
-            const summary = recordSummary(records, noun);
-            if(summary) actionSummaries.push(`Authorization reviewed: ${summary}`);
+            if(hasEnteredRecord(records)) actionSummaries.push("authorization details reviewed");
             if(id === "pharmacyauthorizationinquiry"){
                 if(/^yes$/i.test(clean(actionValues.pharmacy_auth_warm_transfer))) actionSummaries.push("warm transferred to the Part D team");
                 if(clean(actionValues.pharmacy_auth_spoke_with)) actionSummaries.push(`spoke with ${clean(actionValues.pharmacy_auth_spoke_with)}`);
@@ -2441,14 +2654,10 @@ function buildAutomaticResolutionSummary(){
         const description = values.length ? ` (${values.join(", ")})` : "";
         return `${name || "benefit details"}${description}`;
     }).filter(Boolean);
-    if(selectedIds.has("benefitsEligibility") && benefits.length) actionSummaries.push(`benefits reviewed: ${benefits.join("; ")}`);
+    if(selectedIds.has("benefitsEligibility") && !clean(actionValues[resolutionOutcomeKey("benefitsEligibility")]) && benefits.length) actionSummaries.push(`benefits reviewed: ${benefits.join("; ")}`);
 
     const uniqueActions = [...new Set(actionSummaries)];
-    const cleanSubject = subject
-        ? subject.charAt(0).toLowerCase() + subject.slice(1)
-        : "";
-    const summary = [cleanSubject, ...uniqueActions].filter(Boolean);
-    return summary.length ? summary.join("; ") : "No additional details were entered";
+    return uniqueActions.length ? uniqueActions.join("; ") : "No additional details were entered";
 }
 
 function generate(){
@@ -2834,7 +3043,8 @@ if(metInteractionId !== ""){
 
 if(resolution){
 
-    text += "Resolution: " + resolution.value;
+    const resolutionSubject = resolution.value.startsWith("Caller") ? "Caller" : "Member";
+    text += `Resolution: ${resolutionSubject} was assisted.`;
 
     const resolutionNotesField = document.getElementById("resolutionNotes");
     const editResolutionSummary = document.getElementById("editResolutionSummary").checked;
@@ -2842,13 +3052,13 @@ if(resolution){
     if(!editResolutionSummary) resolutionNotesField.value = buildAutomaticResolutionSummary();
     const resolutionNotes = resolutionNotesField.value.trim();
 
-    if(resolutionNotes !== ""){
+    if(resolutionNotes !== "" && resolutionNotes !== "No additional details were entered"){
 
-        text += " " + resolutionNotes.replace(/[.!?]+$/, "");
+        text += " " + resolutionNotes.replace(/[.!?]+$/, "") + ".";
 
     }
 
-    text += ".\n";
+    text += "\n";
 
 };
 const mid = document.getElementById("hipaa_mid").checked;
@@ -2964,10 +3174,16 @@ function renderDemographicBlocks(){
             </div>
 
             <div class="empty-subtitle">
-                Press <strong>+ Add Update</strong>.
+                Add an update to begin.
             </div>
         </div>
     `;
+
+    container.insertAdjacentHTML("beforeend", `
+        <button type="button" class="copy" onclick="addDemographicBlock()">
+            + Add Update
+        </button>
+    `);
 
     return;
 }
@@ -3087,6 +3303,16 @@ function renderDemographicBlocks(){
 
     });
 
+    container.insertAdjacentHTML("beforeend", memberDemographics.length < 6 ? `
+        <button type="button" class="copy" onclick="addDemographicBlock()">
+            + Add Update
+        </button>
+    ` : `
+        <div class="max-updates">
+            ✓ Maximum of 6 updates reached
+        </div>
+    `);
+
 }
 
 function renderPreferenceBlocks(){
@@ -3107,10 +3333,16 @@ function renderPreferenceBlocks(){
             </div>
 
             <div class="empty-subtitle">
-                Press <strong>+ Add Preference</strong>.
+                Add a preference to begin.
             </div>
         </div>
         `;
+
+        container.insertAdjacentHTML("beforeend", `
+            <button type="button" class="copy" onclick="addPreferenceBlock()">
+                + Add Preference
+            </button>
+        `);
 
         return;
     }
@@ -3215,6 +3447,16 @@ function renderPreferenceBlocks(){
 
     });
 
+    container.insertAdjacentHTML("beforeend", memberPreferences.length < 7 ? `
+        <button type="button" class="copy" onclick="addPreferenceBlock()">
+            + Add Preference
+        </button>
+    ` : `
+        <div class="max-updates">
+            ✓ Maximum of 7 preference updates reached
+        </div>
+    `);
+
 }
 
 function renderProviderBlocks(){
@@ -3234,10 +3476,16 @@ function renderProviderBlocks(){
                 </div>
 
                 <div class="empty-subtitle">
-                    Press <strong>+ Add Provider</strong>.
+                    Add a provider to begin.
                 </div>
             </div>
         `;
+
+        container.insertAdjacentHTML("beforeend", `
+            <button type="button" class="copy" onclick="addProvider()">
+                + Add Provider
+            </button>
+        `);
 
         return;
     }
@@ -3330,6 +3578,12 @@ function renderProviderBlocks(){
 `;
 
     });
+
+    container.insertAdjacentHTML("beforeend", `
+        <button type="button" class="copy" onclick="addProvider()">
+            + Add Provider
+        </button>
+    `);
 
 }
 
@@ -4320,6 +4574,18 @@ detailContainer.innerHTML += `
 
 `;
 
+    detailContainer.innerHTML += `
+        <textarea
+            id="bulkPaste-benefits"
+            class="detail-textarea small"
+            onpaste="setTimeout(() => importRepeatedRecords('benefits'), 0)"
+            placeholder="Paste copied benefit details here..."
+        ></textarea>
+        <button type="button" class="copy" onclick="importRepeatedRecords('benefits')">
+            Import pasted benefits
+        </button>
+    `;
+
     /*
         TOOLS USED
     */
@@ -4343,20 +4609,7 @@ detailContainer.innerHTML += `
 
     `;
 
-
     detailContainer.innerHTML += `
-        <button type="button" class="copy" onclick="addRepeatedRecord('benefits')">
-            + Add Benefit
-        </button>
-        <textarea
-            id="bulkPaste-benefits"
-            class="detail-textarea small"
-            onpaste="setTimeout(() => importRepeatedRecords('benefits'), 0)"
-            placeholder="Paste copied benefit details here..."
-        ></textarea>
-        <button type="button" class="copy" onclick="importRepeatedRecords('benefits')">
-            Import pasted benefits
-        </button>
         <div id="benefitRecordsList"></div>
     `;
 
@@ -4405,11 +4658,15 @@ function renderActionDetails(){
 
 }
 
-        if(!action.fields) return;
+        if(!action.fields){
+            renderResolutionOutcome(action, detailContainer);
+            return;
+        }
 
         if(action.id === "benefitsEligibility"){
 
     renderBenefitsEligibilityDetails(detailContainer);
+    renderResolutionOutcome(action, detailContainer);
 
     return;
 
@@ -4441,19 +4698,6 @@ if(field.showWhen){
 if(field.type==="multiDemographic"){
 
     detailContainer.innerHTML += `
-        ${memberDemographics.length < 6 ? `
-<button
-    type="button"
-    class="copy"
-    onclick="addDemographicBlock()">
-    + Add Update
-</button>
-` : `
-<div class="max-updates">
-    ✓ Maximum of 6 updates reached
-</div>
-`}
-
         <div id="memberDemographicBlocks"></div>
     `;
 
@@ -4464,19 +4708,6 @@ if(field.type==="multiDemographic"){
 if(field.type==="multiPreference"){
 
     detailContainer.innerHTML += `
-        ${memberPreferences.length < 7 ? `
-<button
-    type="button"
-    class="copy"
-    onclick="addPreferenceBlock()">
-    + Add Preference
-</button>
-` : `
-<div class="max-updates">
-    ✓ Maximum of 7 preference updates reached
-</div>
-`}
-
         <div id="memberPreferenceBlocks"></div>
     `;
 
@@ -4486,13 +4717,6 @@ if(field.type==="multiPreference"){
 }
 if(field.type==="multiProvider"){
     detailContainer.innerHTML += `
-        <button
-            type="button"
-            class="copy"
-            onclick="addProvider()">
-            + Add Provider
-        </button>
-
         <div id="providerBlocks"></div>
     `;
 
@@ -4502,9 +4726,6 @@ if(field.type==="multiProvider"){
 }
 if(field.type === "multiClaims"){
     detailContainer.innerHTML += `
-        <button type="button" class="copy" onclick="addRepeatedRecord('claims')">
-            + Add Claim
-        </button>
         <textarea id="bulkPaste-claims" class="detail-textarea small" onpaste="setTimeout(() => importRepeatedRecords('claims'), 0)" placeholder="Paste copied claim table rows here (include the column headings if possible)..."></textarea>
         <button type="button" class="copy" onclick="importRepeatedRecords('claims')">Import pasted claims</button>
         <div id="claimsRecordsList"></div>
@@ -4520,11 +4741,8 @@ if(field.type === "multiAuthorization"){
         ? "medicalAuthorizationRecordsList"
         : "pharmacyAuthorizationRecordsList";
     detailContainer.innerHTML += `
-        <button type="button" class="copy" onclick="addRepeatedRecord('${kind}')">
-            + Add Authorization
-        </button>
-        <textarea id="bulkPaste-${kind}" class="detail-textarea small" placeholder="Paste one or more authorizations here (Authorization number, Service From, Service To, Provider Name, Status, Amount Billed)..."></textarea>
-        <button type="button" class="copy" onclick="importRepeatedRecords('${kind}')">Paste authorization details</button>
+        <textarea id="bulkPaste-${kind}" class="detail-textarea small" onpaste="setTimeout(() => importRepeatedRecords('${kind}'), 0)" placeholder="Paste copied authorization rows here (Auth number, Provider/Facility, Start/End date, Auth type, Type of care, Status, ICD, Procedure code/description, Business Line)..."></textarea>
+        <button type="button" class="copy" onclick="importRepeatedRecords('${kind}')">Import pasted authorizations</button>
         <div id="${containerId}"></div>
     `;
     renderRepeatedRecords(kind, containerId);
@@ -4532,9 +4750,6 @@ if(field.type === "multiAuthorization"){
 }
 if(field.type === "multiBenefits"){
     detailContainer.innerHTML += `
-        <button type="button" class="copy" onclick="addRepeatedRecord('benefits')">
-            + Add Benefit
-        </button>
         <textarea id="bulkPaste-benefits" class="detail-textarea small" onpaste="setTimeout(() => importRepeatedRecords('benefits'), 0)" placeholder="Paste copied benefit details here..."></textarea>
         <button type="button" class="copy" onclick="importRepeatedRecords('benefits')">Import pasted benefits</button>
         <div id="benefitRecordsList"></div>
@@ -4650,6 +4865,8 @@ if(
 
         });
 
+        renderResolutionOutcome(action, detailContainer);
+
     });
 
 }
@@ -4678,6 +4895,8 @@ function toggleAction(id){
 }else{
 
     selectedActions.splice(index,1);
+
+    delete actionValues[resolutionOutcomeKey(action.id)];
 
     if(action.fields){
 

@@ -4348,6 +4348,15 @@ detailContainer.innerHTML += `
         <button type="button" class="copy" onclick="addRepeatedRecord('benefits')">
             + Add Benefit
         </button>
+        <textarea
+            id="bulkPaste-benefits"
+            class="detail-textarea small"
+            onpaste="setTimeout(() => importRepeatedRecords('benefits'), 0)"
+            placeholder="Paste copied benefit details here..."
+        ></textarea>
+        <button type="button" class="copy" onclick="importRepeatedRecords('benefits')">
+            Import pasted benefits
+        </button>
         <div id="benefitRecordsList"></div>
     `;
 

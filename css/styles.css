@@ -374,6 +374,13 @@ textarea{
     margin-bottom:4px;
 }
 
+.resolution-outcome-help{
+    display:block;
+    margin:-4px 0 8px;
+    color:#64748b;
+    font-size:11px;
+}
+
 .detail-textarea{
     width:100%;
     min-height:48px;

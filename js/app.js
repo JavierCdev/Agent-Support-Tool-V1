@@ -1719,8 +1719,45 @@ function claimTableFieldKey(value){
     return aliases[normalizeClaimTableHeader(value)] || null;
 }
 
+function parseLineBasedClaims(raw){
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const isDate = value => /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(value);
+    const isClaimNumber = value => /^[A-Z0-9-]{8,}$/i.test(value) && /\d/.test(value);
+    const isStatus = value => /\b(?:deny|denied|pend(?:ing)?|approve(?:d)?|reject(?:ed)?|paid|processed|in review)\b/i.test(value);
+    const isAmount = value => /^\$?\s*\d[\d,]*(?:\.\d{2})?$/.test(value);
+    const claimIndexes = [];
+
+    lines.forEach((line, index) => {
+        if(isClaimNumber(line)) claimIndexes.push(index);
+    });
+    if(!claimIndexes.length) return [];
+
+    const records = [];
+    claimIndexes.forEach((claimIndex, position) => {
+        const previousClaimIndex = position ? claimIndexes[position - 1] : -1;
+        const nextClaimIndex = claimIndexes[position + 1] ?? lines.length;
+        const dates = lines.slice(previousClaimIndex + 1, claimIndex).filter(isDate).slice(-2);
+        const following = lines.slice(claimIndex + 1, nextClaimIndex);
+        const statusIndex = following.findIndex(isStatus);
+        if(statusIndex < 0) return;
+
+        const namesBeforeStatus = following.slice(0, statusIndex)
+            .filter(value => value && !isDate(value) && !/^[NY]$/i.test(value));
+        const record = createBlankRecord("claims");
+        record.claimNumber = lines[claimIndex];
+        record.serviceFrom = dates.length > 1 ? dates[dates.length - 2] : (dates[0] || "");
+        record.serviceTo = dates.length > 1 ? dates[dates.length - 1] : (dates[0] || "");
+        // A single name after the ID is the Member column; the provider is the next column.
+        record.providerName = namesBeforeStatus.length > 1 ? namesBeforeStatus[namesBeforeStatus.length - 1] : "";
+        record.status = following[statusIndex];
+        record.amountBilled = following.slice(statusIndex + 1).find(isAmount) || "";
+        records.push(record);
+    });
+    return records;
+}
+
 function parseClaimsTable(raw){
-    if(!raw.includes("\t")) return [];
+    if(!raw.includes("\t")) return parseLineBasedClaims(raw);
     const rows = raw.split(/\r?\n/)
         .filter(line => line.trim())
         .map(line => line.split("\t").map(cell => cell.trim()));

@@ -1716,8 +1716,8 @@ const resolutionOutcomeOptions = {
     accumulator: ["Accumulator information was explained", "Balance was verified", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
     gaps: ["Reminder was explained", "Appointment was scheduled", "Member will schedule the appointment", "Follow-up is pending", "No further action was needed"],
     claimsinquiry: ["Claim status was explained", "Denial reason was explained", "Appeal process was explained", "Appeal request was submitted", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
-    medicalauthorizationinquiry: ["Authorization status was explained", "Authorization request was submitted", "Authorization was approved", "Authorization was denied", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
-    pharmacyauthorizationinquiry: ["Authorization status was explained", "Authorization request was submitted", "Authorization was approved", "Authorization was denied", "Member was transferred to the Part D team", "Follow-up is pending", "No further action was needed"],
+    medicalauthorizationinquiry: ["Authorization status was explained", "Authorization request was submitted", "Authorization was approved", "Authorization was partially approved", "Authorization was denied", "Issue was escalated", "Follow-up is pending", "No further action was needed"],
+    pharmacyauthorizationinquiry: ["Authorization status was explained", "Authorization request was submitted", "Authorization was approved", "Authorization was partially approved", "Authorization was denied", "Member was transferred to the Part D team", "Follow-up is pending", "No further action was needed"],
     pharmacyclaims: ["Pharmacy claim status was explained", "Pharmacy claim issue was escalated", "Information was provided", "Follow-up is pending", "No further action was needed"],
     cancellationdisenroll: ["Cancellation request was submitted", "Disenrollment information was explained", "Follow-up is pending", "Request could not be completed"],
     billinginqandpay: ["Billing information was explained", "Payment was processed", "Billing issue was escalated", "Follow-up is pending", "No further action was needed"],
@@ -2540,7 +2540,12 @@ function buildAutomaticResolutionSummary(){
         }
         if(id === "medicalauthorizationinquiry" || id === "pharmacyauthorizationinquiry"){
             const records = id === "medicalauthorizationinquiry" ? medicalAuthorizationRecords : pharmacyAuthorizationRecords;
-            if(hasEnteredRecord(records)) actionSummaries.push("authorization details reviewed");
+            const statusDetails = [...new Set(records
+                .filter(record => clean(record.status))
+                .map(record => [clean(record.status), clean(record.typeOfCare)].filter(Boolean).join(" — "))
+            )];
+            if(statusDetails.length) actionSummaries.push(`authorization status reviewed: ${statusDetails.join("; ")}`);
+            else if(hasEnteredRecord(records)) actionSummaries.push("authorization details reviewed");
             if(id === "pharmacyauthorizationinquiry"){
                 if(/^yes$/i.test(clean(actionValues.pharmacy_auth_warm_transfer))) actionSummaries.push("warm transferred to the Part D team");
                 if(clean(actionValues.pharmacy_auth_spoke_with)) actionSummaries.push(`spoke with ${clean(actionValues.pharmacy_auth_spoke_with)}`);

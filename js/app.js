@@ -3434,11 +3434,20 @@ if(resolution){
 
     if(resolutionNotes !== "" && resolutionNotes !== "No additional details were entered"){
 
-        text += " " + resolutionNotes.replace(/[.!?]+$/, "") + ".";
+        const resolutionNotesForOutput = resolutionNotes
+            .split(/(?<=[.!?])\s+/)
+            .filter(sentence => !/\b(?:offered additional assistance|no further questions)\b/i.test(sentence))
+            .join(" ")
+            .trim();
+
+        if(resolutionNotesForOutput){
+            text += " " + resolutionNotesForOutput.replace(/[.!?]+$/, "") + ".";
+        }
 
     }
 
-    text += "\n";
+    const callerOrMember = (interactionType || resolutionSubject).toLowerCase();
+    text += ` Offered additional assistance; however, the ${callerOrMember} had no further questions.\n`;
 
 };
 const mid = document.getElementById("hipaa_mid").checked;

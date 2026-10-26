@@ -2727,7 +2727,7 @@ function formatRepeatedRecordNotes(kind, heading){
         if(!lines.length) return "";
         recordNumber += 1;
         return `${heading} ${recordNumber}:\n${lines.join("\n")}\n`;
-    }).filter(Boolean).join("");
+    }).filter(Boolean).join("\n");
     const businessLines = records.map(record => String(record.businessLine || "").trim()).filter(Boolean);
     const hasMedicareBusinessLine = kind === "medicalAuthorization"
         && records.length > 0
@@ -3037,7 +3037,7 @@ function buildAutomaticResolutionSummary(){
     if(selectedIds.has("benefitsEligibility") && !clean(actionValues[resolutionOutcomeKey("benefitsEligibility")]) && benefits.length) actionSummaries.push(`benefits reviewed: ${benefits.join("; ")}`);
 
     const uniqueActions = [...new Set(actionSummaries)];
-    return uniqueActions.length ? uniqueActions.join("; ") : "No additional details were entered";
+    return uniqueActions.length ? uniqueActions.join("\n") : "No additional details were entered";
 }
 
 function generate(){
@@ -3151,11 +3151,11 @@ if(reason !== ""){
 
   if(selectedActions.length){
 
-    text += "Actions:\n";
+    text += "Actions:\n\n";
 
     selectedActions.forEach(action=>{
 
-        text += action.note + "\n";
+        text += String(action.note || "").trim() + "\n";
 
         if(action.fields){
 
@@ -3424,30 +3424,27 @@ if(metInteractionId !== ""){
 if(resolution){
 
     const resolutionSubject = resolution.value.startsWith("Caller") ? "Caller" : "Member";
-    text += `Resolution: ${resolutionSubject} was assisted.`;
-
     const resolutionNotesField = document.getElementById("resolutionNotes");
     const editResolutionSummary = document.getElementById("editResolutionSummary").checked;
     resolutionNotesField.readOnly = !editResolutionSummary;
     if(!editResolutionSummary) resolutionNotesField.value = buildAutomaticResolutionSummary();
     const resolutionNotes = resolutionNotesField.value.trim();
-
-    if(resolutionNotes !== "" && resolutionNotes !== "No additional details were entered"){
-
-        const resolutionNotesForOutput = resolutionNotes
+    const resolutionNotesForOutput = resolutionNotes && resolutionNotes !== "No additional details were entered"
+        ? resolutionNotes
             .split(/(?<=[.!?])\s+/)
             .filter(sentence => !/\b(?:offered additional assistance|no further questions)\b/i.test(sentence))
             .join(" ")
-            .trim();
+            .trim()
+        : "";
 
-        if(resolutionNotesForOutput){
-            text += " " + resolutionNotesForOutput.replace(/[.!?]+$/, "") + ".";
-        }
-
+    if(resolutionNotesForOutput){
+        text += `\nResolution: ${resolutionSubject} was assisted with:\n${resolutionNotesForOutput.replace(/[.!?]+$/, "")}.\n`;
+    }else{
+        text += `\nResolution: ${resolutionSubject} was assisted with the request.\n`;
     }
 
     const callerOrMember = (interactionType || resolutionSubject).toLowerCase();
-    text += ` Offered additional assistance; however, the ${callerOrMember} had no further questions.\n`;
+    text += `Offered additional assistance; however, the ${callerOrMember} had no further questions.\n`;
 
 };
 const mid = document.getElementById("hipaa_mid").checked;
@@ -3470,7 +3467,12 @@ document.querySelectorAll(".hipaa label").forEach(label=>{
     label.classList.toggle("warning", !hipaaCompleted);
 });
 
-    document.getElementById("nota").value = text;
+    const formattedNote = text
+        .replace(/\r\n?/g, "\n")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    document.getElementById("nota").value = formattedNote;
 }
 
 function toggleHipaa(){

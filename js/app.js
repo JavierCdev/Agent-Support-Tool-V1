@@ -3470,6 +3470,7 @@ document.querySelectorAll(".hipaa label").forEach(label=>{
     const formattedNote = text
         .replace(/\r\n?/g, "\n")
         .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n(?=(?:Reason:|HIPAA Verification:|Is this the first time calling us about this matter\?:|Has any of your personal information changed recently\?:|Is your email address and phone number still valid\?:|Website:|Actions:|Caller Name:|Interaction ID:|Met Interaction ID:|In Home Assessment:|Resolution:))/g, "\n\n")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
     document.getElementById("nota").value = formattedNote;

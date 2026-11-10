@@ -2110,7 +2110,7 @@ function parseBenefitsPaste(raw){
             let value = usefulValue(match[1]);
             if(!value){
                 const next = lines[index + 1] || "";
-                if(next && !/^(?:[A-Za-z][A-Za-z _-]{1,40})\\s*[:：]/.test(next)){
+                if(next && !/[:：]/.test(next)){
                     value = usefulValue(next);
                 }
             }

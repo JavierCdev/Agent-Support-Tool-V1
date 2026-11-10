@@ -2169,14 +2169,18 @@ function parseBenefitsPaste(raw){
         if(match) record.coinsurance = match[1];
     }
 
-    // Keep Coverage populated with a short, useful summary instead of the full description.
-    const coverageSections = getSection(
-        "Coverage",
-        "Copay|Limit|Note|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\\s]+Out[_\\s]+Of[_\\s]+Pocket"
-    );
-    if(coverageSections.length){
-        const coverageText = coverageSections[coverageSections.length - 1]
-            .slice(0, 3)
+    // Extract the Coverage section directly; do not depend on the generic section parser.
+    const coverageHeaderIndex = lines.findIndex(line => /^Coverage\\s*[:：]?\\s*$/i.test(line));
+    if(coverageHeaderIndex >= 0){
+        const coverageLines = [];
+        const coverageStop = /^(?:Copay|Co[\\s\\-‐‑‒–—―−]*Payment|Co[\\s\\-‐‑‒–—―−]*Insurance|Limit|Limits|Note|Notes|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\\s]+Out[_\\s]+Of[_\\s]+Pocket)\\b/i;
+        for(let index = coverageHeaderIndex + 1; index < lines.length; index++){
+            const line = lines[index];
+            if(coverageStop.test(line)) break;
+            const value = cleanValue(line);
+            if(value && !/^[-‐‑‒–—―−]+$/.test(value)) coverageLines.push(value);
+        }
+        const coverageText = coverageLines
             .join(" ")
             .replace(/\\s+/g, " ")
             .trim();
@@ -2187,7 +2191,8 @@ function parseBenefitsPaste(raw){
             }else{
                 const cut = coverageText.slice(0, maxCoverageLength);
                 const lastSpace = cut.lastIndexOf(" ");
-                record.coverage = (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).replace(/[\\s,;:]+$/, "") + "…";
+                record.coverage = (lastSpace > 40 ? cut.slice(0, lastSpace) : cut)
+                    .replace(/[\\s,;:]+$/, "") + "…";
             }
         }
     }

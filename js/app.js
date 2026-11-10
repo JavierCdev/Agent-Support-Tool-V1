@@ -2173,7 +2173,7 @@ function parseBenefitsPaste(raw){
     const coverageHeaderIndex = lines.findIndex(line => /^Coverage\s*[:：]?\s*$/i.test(line));
     if(coverageHeaderIndex >= 0){
         const coverageLines = [];
-        const coverageStop = /^(?:Copay|Co[\s\-‐‑‒–—―−]*Payment|Co[\s\-‐‑‒–—―−]*Insurance|Limit|Limits|Note|Notes|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\s]+Out[_\s]+Of[_\s]+Pocket)\\b/i;
+        const coverageStop = /^(?:Copay|Co[\s\-‐‑‒–—―−]*Payment|Co[\s\-‐‑‒–—―−]*Insurance|Limit|Limits|Note|Notes|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\s]+Out[_\s]+Of[_\s]+Pocket)\b/i;
         for(let index = coverageHeaderIndex + 1; index < lines.length; index++){
             const line = lines[index];
             if(coverageStop.test(line)) break;

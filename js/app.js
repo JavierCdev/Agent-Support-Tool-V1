@@ -2170,10 +2170,10 @@ function parseBenefitsPaste(raw){
     }
 
     // Extract the Coverage section directly; do not depend on the generic section parser.
-    const coverageHeaderIndex = lines.findIndex(line => /^Coverage\\s*[:：]?\\s*$/i.test(line));
+    const coverageHeaderIndex = lines.findIndex(line => /^Coverage\s*[:：]?\s*$/i.test(line));
     if(coverageHeaderIndex >= 0){
         const coverageLines = [];
-        const coverageStop = /^(?:Copay|Co[\\s\\-‐‑‒–—―−]*Payment|Co[\\s\\-‐‑‒–—―−]*Insurance|Limit|Limits|Note|Notes|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\\s]+Out[_\\s]+Of[_\\s]+Pocket)\\b/i;
+        const coverageStop = /^(?:Copay|Co[\s\-‐‑‒–—―−]*Payment|Co[\s\-‐‑‒–—―−]*Insurance|Limit|Limits|Note|Notes|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\s]+Out[_\s]+Of[_\s]+Pocket)\\b/i;
         for(let index = coverageHeaderIndex + 1; index < lines.length; index++){
             const line = lines[index];
             if(coverageStop.test(line)) break;
@@ -2182,7 +2182,7 @@ function parseBenefitsPaste(raw){
         }
         const coverageText = coverageLines
             .join(" ")
-            .replace(/\\s+/g, " ")
+            .replace(/\s+/g, " ")
             .trim();
         if(coverageText){
             const maxCoverageLength = 160;
@@ -2192,7 +2192,7 @@ function parseBenefitsPaste(raw){
                 const cut = coverageText.slice(0, maxCoverageLength);
                 const lastSpace = cut.lastIndexOf(" ");
                 record.coverage = (lastSpace > 40 ? cut.slice(0, lastSpace) : cut)
-                    .replace(/[\\s,;:]+$/, "") + "…";
+                    .replace(/[\s,;:]+$/, "") + "…";
             }
         }
     }

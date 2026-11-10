@@ -3018,11 +3018,11 @@ function buildAutomaticResolutionSummary(){
     const benefits = benefitRecords.map(record => {
         const name = clean(record.benefitName);
         const values = [
-            record.copayment && \`copay \${clean(record.copayment)}\`,
-            record.coinsurance && \`coinsurance \${clean(record.coinsurance)}\`
+            record.copayment && ("copay " + clean(record.copayment)),
+            record.coinsurance && ("coinsurance " + clean(record.coinsurance))
         ].filter(Boolean);
         if(!name && !values.length) return "";
-        return \`\${name || "benefit details"}\${values.length ? \` (\${values.join(", ")})\` : ""}\`;
+        return (name || "benefit details") + (values.length ? " (" + values.join(", ") + ")" : "");
     }).filter(Boolean);
     if(selectedIds.has("benefitsEligibility") && !clean(actionValues[resolutionOutcomeKey("benefitsEligibility")]) && benefits.length) actionSummaries.push(`benefits reviewed: ${benefits.join("; ")}`);
 

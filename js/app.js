@@ -2169,6 +2169,29 @@ function parseBenefitsPaste(raw){
         if(match) record.coinsurance = match[1];
     }
 
+    // Keep Coverage populated with a short, useful summary instead of the full description.
+    const coverageSections = getSection(
+        "Coverage",
+        "Copay|Limit|Note|Dental Vendor|Prophylaxis|Description|Conditions|Deductible|Maximum[_\\s]+Out[_\\s]+Of[_\\s]+Pocket"
+    );
+    if(coverageSections.length){
+        const coverageText = coverageSections[coverageSections.length - 1]
+            .slice(0, 3)
+            .join(" ")
+            .replace(/\\s+/g, " ")
+            .trim();
+        if(coverageText){
+            const maxCoverageLength = 160;
+            if(coverageText.length <= maxCoverageLength){
+                record.coverage = coverageText;
+            }else{
+                const cut = coverageText.slice(0, maxCoverageLength);
+                const lastSpace = cut.lastIndexOf(" ");
+                record.coverage = (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).replace(/[\\s,;:]+$/, "") + "…";
+            }
+        }
+    }
+
     // Limit is a short structured field (e.g. "Unlimited"), not the full Limit section.
     const limitSection = getSection("Limit", "Note|Dental Vendor|Prophylaxis|Description|Coverage|Copay");
     record.limit = limitSection.length ? limitSection[0].join(" ").trim() : "";
